@@ -147,7 +147,7 @@ FatSecret can't move an entry to another food or another day. So "it was chicken
 
 ## What it doesn't do
 
-- It can't look up barcodes, regional catalogs such as a Polish one, or custom foods. A free key reaches only the US catalog, so Claude searches it in English.
+- It can't look up barcodes, regional catalogs such as a Polish one, or custom foods. A free key reaches only the US catalog, so Claude searches it in English. Entries are still saved under the name you used, in your language, with a short note that the food was matched in the US catalog, such as "Kajzerka (katalog USA)"; the draft shows the catalog's name beside it.
 - It doesn't track weight, exercise or recipes, only food entries.
 - It doesn't serve strangers. There's no public server, and each server has a fixed list of people.
 

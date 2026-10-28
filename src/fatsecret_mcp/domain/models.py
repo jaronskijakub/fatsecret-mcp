@@ -185,6 +185,8 @@ class DraftItem:
     amount: str
     nutrition: Nutrition
     assumption: str | None
+    catalog_name: str | None = None
+    """Set when the entry logs a catalog Food under the User's own name for it."""
     stand_in: StandIn | None = None
     """Set when the entry logs a catalog Food in place of a product missing from the catalog."""
     repeated_from: RepeatedFrom | None = None

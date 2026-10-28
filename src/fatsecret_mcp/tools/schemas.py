@@ -88,6 +88,13 @@ class FoodDraftInput(BaseModel):
         le=10000,
         allow_inf_nan=False,
     )
+    food_entry_name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_NAME_LENGTH,
+        description="The entry's name in the User's own words and language, with a short note that it "
+        'was matched in the US catalog, e.g. "Kajzerka (katalog USA)". Omit to use the catalog Food\'s name.',
+    )
     assumption: Assumption = None
 
 
@@ -452,6 +459,9 @@ class ProposedEntry(BaseModel):
     fat: float
     carbohydrate: float
     assumption: str | None
+    catalog_name: str | None = Field(
+        description="The catalog Food's name, set when the entry is named in the User's own words."
+    )
     stand_in: StandInDetails | None = Field(
         description="Set when the entry is a Stand-in for a product missing from the catalog."
     )
@@ -477,6 +487,7 @@ class ProposedEntry(BaseModel):
             fat=amounts.fat,
             carbohydrate=amounts.carbohydrate,
             assumption=item.assumption,
+            catalog_name=item.catalog_name,
             stand_in=stand_in,
             repeated_from=repeated_from,
         )

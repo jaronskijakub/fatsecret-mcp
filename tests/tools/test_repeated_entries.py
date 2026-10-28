@@ -159,6 +159,7 @@ async def test_repeating_yesterdays_breakfast_reads_yesterday_once_and_searches_
         "fat": 6,
         "carbohydrate": 50,
         "assumption": None,
+        "catalog_name": None,
         "stand_in": None,
         "repeated_from": {"diary_day": "2026-10-13", "meal": "breakfast"},
     }

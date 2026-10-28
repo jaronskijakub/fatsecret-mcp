@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from typing import Annotated
 
@@ -97,7 +98,10 @@ def register(
         Show the Draft to the User.
 
         A Food item uses Food and Serving ids from search_foods. number_of_units is the FatSecret unit
-        count, not necessarily grams: scale it from the Serving's number_of_units.
+        count, not necessarily grams: scale it from the Serving's number_of_units. Name it with
+        food_entry_name the way the User said it, in their language, followed by a short note in
+        the same language that it was matched in the US catalog, e.g. "Kajzerka (katalog USA)" or
+        "Kaiser roll (US catalog)". The Draft shows the catalog's name beside it.
 
         A Nutrition Label item logs a branded product missing from the catalog as a Stand-in: the
         closest catalog Food for search_phrase, in the amount whose kcal match the label, under the
@@ -300,9 +304,19 @@ async def _prepared_item(
     if isinstance(item, DiaryEntryDraftInput):
         return await _repeated(item, fatsecret, food_cache, diary_days)
 
-    name, serving = await _resolve_serving(item, fatsecret, food_cache)
+    return await _food_item(item, fatsecret, food_cache)
 
-    return draft_item(item.food_id, name, serving, item.number_of_units, item.assumption)
+
+async def _food_item(item: FoodDraftInput, fatsecret: FatSecretGateway, food_cache: FoodCache) -> DraftItem:
+    """A catalog Food under the User's name for it, or under the catalog's name when none was given."""
+    catalog_name, serving = await _resolve_serving(item, fatsecret, food_cache)
+    name = item.food_entry_name or catalog_name
+    drafted = draft_item(item.food_id, name, serving, item.number_of_units, item.assumption)
+
+    if name == catalog_name:
+        return drafted
+
+    return replace(drafted, catalog_name=catalog_name)
 
 
 async def _repeated(

@@ -130,6 +130,7 @@ async def test_a_draft_shows_amount_assumption_totals_and_the_day_after_without_
         "fat": 0.4,
         "carbohydrate": 42.3,
         "assumption": "A bowl ≈ 150 g",
+        "catalog_name": None,
         "stand_in": None,
         "repeated_from": None,
     }
@@ -140,6 +141,35 @@ async def test_a_draft_shows_amount_assumption_totals_and_the_day_after_without_
         "daily_targets": {"kcal": 2500, "protein": 160, "fat": 80, "carbohydrate": 280},
         "remaining": {"kcal": -60, "protein": 4.6, "fat": 4.4, "carbohydrate": -26.4},
     }
+
+
+async def test_a_food_item_named_in_the_users_words_is_drafted_and_saved_under_that_name(
+    connect: Connect, fatsecret: FakeFatSecret, household: Household, rice: Food
+) -> None:
+    named = {
+        "food_id": rice.id,
+        "serving_id": "rice-100g",
+        "number_of_units": 150,
+        "food_entry_name": "Ryż",
+    }
+    named_as_in_the_catalog = {
+        "food_id": rice.id,
+        "serving_id": "rice-100g",
+        "number_of_units": 50,
+        "food_entry_name": "Cooked Rice",
+    }
+
+    async with connect("jakub") as client:
+        proposed = await draft(client, [named, named_as_in_the_catalog])
+        confirmed = await client.call_tool("confirm_draft", {"draft_id": proposed["draft_id"]})
+
+    entries = await fatsecret.list_food_entries(household.user("jakub").fatsecret, TODAY)
+    names = [(item["name"], item["catalog_name"]) for item in proposed["items"]]
+    written = [entry.name for entry in entries]
+
+    assert not confirmed.is_error, confirmed.content
+    assert names == [("Ryż", "Cooked Rice"), ("Cooked Rice", None)]
+    assert written == ["Ryż", "Cooked Rice"]
 
 
 @pytest.mark.parametrize(

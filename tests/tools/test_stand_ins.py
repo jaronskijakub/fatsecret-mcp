@@ -176,6 +176,7 @@ async def test_a_nutrition_label_picks_the_closest_catalog_food_and_matches_kcal
             "fat": 6.3,
             "carbohydrate": 19.0,
             "assumption": None,
+            "catalog_name": None,
             "stand_in": {
                 "food_name": "Chocolate Protein Bar",
                 "grams_eaten": 50,
