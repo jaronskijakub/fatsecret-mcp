@@ -185,6 +185,8 @@ ChatGPT signs in the same way as Claude, with the same user `id` and connector p
 
 Each person then adds `https://<your-server>/mcp` in ChatGPT as a custom connector. ChatGPT offers custom connectors in developer mode, on some plans only; OpenAI's [developer mode](https://help.openai.com/en/articles/12584461) article lists them. Someone who uses both apps signs in to each one separately, and signing them out ends both ([connector](https://github.com/jaronskijakub/fatsecret-mcp/blob/main/docs/connector.md#add-the-connector-in-chatgpt)). The examples on this page come from Claude.
 
+ChatGPT sometimes stops a confirmed change or removal with "This tool call was blocked by OpenAI's safety checks" before it reaches the server, while adding entries works. Nothing changes in your diary then. Try again in a new chat, or make the change with Claude or in the FatSecret app.
+
 ## Documentation
 
 - [Setup](https://github.com/jaronskijakub/fatsecret-mcp/blob/main/docs/setup.md): configuration, adding people, their settings, and running it locally with Claude Code.
