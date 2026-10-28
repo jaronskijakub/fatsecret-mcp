@@ -1,5 +1,5 @@
 """The connector's OAuth endpoints, sharing one set of sign-in limits, password workers, spent codes
-and Claude's client metadata.
+and the connector apps' client metadata.
 
 Each endpoint's steps live in its own module: `authorization` shows the sign-in page, `sign_in`
 checks the password and issues a code, `grants` exchanges codes and refresh tokens, and `sessions`
@@ -13,7 +13,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from fatsecret_mcp.auth.authorization import start_authorization
-from fatsecret_mcp.auth.client_metadata import ClaudeMetadata
+from fatsecret_mcp.auth.client_metadata import KNOWN_CLIENTS, ClientMetadata
 from fatsecret_mcp.auth.grants import SpentCodes, grant_tokens
 from fatsecret_mcp.auth.models import AccessClaims, ConnectorIdentity
 from fatsecret_mcp.auth.passwords import PasswordChecks
@@ -28,9 +28,11 @@ class ConnectorAuth:
     """One per HTTP app, so every request shares the same limits and workers."""
 
     def __init__(self, household: Household, http: httpx2.AsyncClient, clock: Clock) -> None:
+        clients = [KNOWN_CLIENTS[name] for name in household.connector_clients]
+
         self.household = household
         self.clock = clock
-        self.claude_metadata = ClaudeMetadata(http, clock)
+        self.client_metadata = ClientMetadata(http, clock, clients)
         self.identity = ConnectorIdentity.of(household)
         self.spent_codes = SpentCodes()
         self.throttle = SignInThrottle()
@@ -51,7 +53,7 @@ class ConnectorAuth:
         return await start_authorization(
             request,
             identity=self.identity,
-            claude_metadata=self.claude_metadata,
+            client_metadata=self.client_metadata,
             clock=self.clock,
         )
 

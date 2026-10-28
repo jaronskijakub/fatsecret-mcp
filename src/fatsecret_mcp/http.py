@@ -213,7 +213,7 @@ class _UserServers:
 
 
 def _metadata_client() -> httpx2.AsyncClient:
-    """Its own two connections, so slow claude.ai fetches never hold the FatSecret client's."""
+    """Its own two connections, so slow client metadata fetches never hold the FatSecret client's."""
     limits = httpx2.Limits(
         max_connections=2,
         max_keepalive_connections=2,

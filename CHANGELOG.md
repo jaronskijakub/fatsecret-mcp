@@ -2,6 +2,16 @@
 
 All notable changes to this project are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- ChatGPT as a second connector app, off by default. Set `FATSECRET_MCP_CLIENTS=claude,chatgpt` to let people sign in from ChatGPT with the same user `id` and connector password. Its client ID and callback are pinned like Claude's, and each app gets its own tokens.
+
+### Changed
+
+- The sign-in page names the app being connected and the host it returns to.
+
 ## [0.2.0] - 2026-10-25
 
 ### Added

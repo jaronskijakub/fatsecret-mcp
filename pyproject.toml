@@ -1,12 +1,12 @@
 [project]
 name = "fatsecret-mcp"
 version = "0.2.0"
-description = "Unofficial, self-hosted MCP server for logging food into a FatSecret food diary through Claude."
+description = "Unofficial, self-hosted MCP server for logging food to a FatSecret diary through Claude or ChatGPT."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Jakub Jaroński" }]
-keywords = ["mcp", "fatsecret", "claude", "food diary", "calorie counter"]
+keywords = ["mcp", "fatsecret", "claude", "chatgpt", "food diary", "calorie counter"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",

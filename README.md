@@ -6,18 +6,20 @@
 [![PyPI](https://img.shields.io/pypi/v/fatsecret-mcp)](https://pypi.org/project/fatsecret-mcp/)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue)](https://github.com/jaronskijakub/fatsecret-mcp/blob/main/pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](https://github.com/jaronskijakub/fatsecret-mcp/blob/main/LICENSE)
+[![Works with Claude](https://img.shields.io/badge/works%20with-Claude-D97757?logo=claude&logoColor=white)](https://github.com/jaronskijakub/fatsecret-mcp/blob/main/docs/connector.md)
+[![Works with ChatGPT](https://img.shields.io/badge/works%20with-ChatGPT-10A37F)](https://github.com/jaronskijakub/fatsecret-mcp#use-it-with-chatgpt)
 
-Log food to your FatSecret diary by talking to Claude on your phone. Claude shows you a draft first, and nothing is saved until you say yes.
+Log food to your FatSecret diary by talking to Claude or [ChatGPT](https://github.com/jaronskijakub/fatsecret-mcp#use-it-with-chatgpt) on your phone. You see a draft first, and nothing is saved until you say yes.
 
 https://github.com/user-attachments/assets/44dfd991-5434-47ad-8b84-bcad24415a1f
 
 A photo of dinner, the draft Claude proposes, a "yes", the day so far, and the new entry in the FatSecret app.
 
-fatsecret-mcp is a self-hosted [MCP](https://modelcontextprotocol.io) server. It connects Claude to your own [FatSecret](https://www.fatsecret.com) food diary, the one you see in the FatSecret app. Claude can read a day or a few weeks of it against your daily calorie and macro targets. It can find foods in the FatSecret catalog and draft entries from a description or a photo. Each draft shows the amounts, calories, macros, a suggested meal and how your day looks after adding it. When a packaged product isn't in the catalog, a photo of its nutrition label is enough.
+fatsecret-mcp is a self-hosted [MCP](https://modelcontextprotocol.io) server. It connects Claude, or ChatGPT when the Operator turns it on, to your own [FatSecret](https://www.fatsecret.com) food diary, the one you see in the FatSecret app. Claude can read a day or a few weeks of it against your daily calorie and macro targets. It can find foods in the FatSecret catalog and draft entries from a description or a photo. Each draft shows the amounts, calories, macros, a suggested meal and how your day looks after adding it. When a packaged product isn't in the catalog, a photo of its nutrition label is enough.
 
 One server serves a household: a few people, each signed in with their own FatSecret account. There's no public instance, so you run your own.
 
-This project is unofficial. It is not affiliated with or endorsed by FatSecret, and it is not medical or dietary advice.
+This project is unofficial. It is not affiliated with or endorsed by FatSecret, Anthropic or OpenAI, and it is not medical or dietary advice.
 
 [Powered by fatsecret Platform API](https://platform.fatsecret.com)
 
@@ -138,7 +140,7 @@ Claude reads the earlier day and drafts the entries you keep, without searching 
 
 ## Run your own
 
-A household server has one **Operator**, the person who deploys it and adds everyone else. Each person in the household signs in to FatSecret once through the Operator, then adds the server to their own Claude account as a custom connector.
+A household server has one **Operator**, the person who deploys it and adds everyone else. Each person in the household signs in to FatSecret once through the Operator, then adds the server to their own Claude account as a custom connector, or to ChatGPT when the Operator turns it on.
 
 ```mermaid
 flowchart LR
@@ -154,7 +156,7 @@ You need:
 
 - your own FatSecret Platform API key. Register at [platform.fatsecret.com](https://platform.fatsecret.com); the free Basic plan is enough. Using it means accepting FatSecret's [API terms](https://platform.fatsecret.com/terms). This project ships no keys;
 - a container host with HTTPS for the server, such as Railway;
-- a Claude account for each person, with custom connectors available on their plan.
+- a Claude or ChatGPT account for each person, with custom connectors available on their plan.
 
 The short path:
 
@@ -164,11 +166,17 @@ The short path:
 
 To try it on your own computer first, run it over stdio with Claude Code; [setup](https://github.com/jaronskijakub/fatsecret-mcp/blob/main/docs/setup.md#run-it-with-claude-code) covers that too. Request quotas, pacing and caching are described in [limits](https://github.com/jaronskijakub/fatsecret-mcp/blob/main/docs/limits.md), and the trust model in [SECURITY.md](https://github.com/jaronskijakub/fatsecret-mcp/blob/main/SECURITY.md).
 
+## Use it with ChatGPT
+
+ChatGPT signs in the same way as Claude, with the same user `id` and connector password, and uses the same five tools. It's off by default. The Operator turns it on by setting `FATSECRET_MCP_CLIENTS=claude,chatgpt` and redeploying.
+
+Each person then adds `https://<your-server>/mcp` in ChatGPT as a custom connector. ChatGPT offers custom connectors in developer mode, on some plans only; OpenAI's [developer mode](https://help.openai.com/en/articles/12584461) article lists them. Someone who uses both apps signs in to each one separately, and signing them out ends both ([connector](https://github.com/jaronskijakub/fatsecret-mcp/blob/main/docs/connector.md#add-the-connector-in-chatgpt)). The examples on this page come from Claude.
+
 ## Documentation
 
 - [Setup](https://github.com/jaronskijakub/fatsecret-mcp/blob/main/docs/setup.md): configuration, adding people, their settings, and running it locally with Claude Code.
 - [Deploy](https://github.com/jaronskijakub/fatsecret-mcp/blob/main/docs/deploy.md): Railway, other container hosts, Docker, and building the image yourself.
-- [Connector](https://github.com/jaronskijakub/fatsecret-mcp/blob/main/docs/connector.md): adding the server to Claude, sign-in, and signing someone out.
+- [Connector](https://github.com/jaronskijakub/fatsecret-mcp/blob/main/docs/connector.md): adding the server to Claude or ChatGPT, sign-in, and signing someone out.
 - [Limits](https://github.com/jaronskijakub/fatsecret-mcp/blob/main/docs/limits.md): the daily quota, pacing, search, drafts and input sizes.
 - [Changelog](https://github.com/jaronskijakub/fatsecret-mcp/blob/main/CHANGELOG.md): what changed in each version.
 

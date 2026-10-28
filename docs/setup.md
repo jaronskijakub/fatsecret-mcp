@@ -20,6 +20,7 @@ FATSECRET_MCP_USERS='[{"id": "me", "display_name": "Me", ...}]'
 | `FATSECRET_MCP_USERS` | Everyone the server serves, as one JSON line. `add-user` writes it for you. |
 | `FATSECRET_MCP_USER` | Over stdio with more than one person: the `id` the server acts as. |
 | `FATSECRET_MCP_BASE_URL` | Over HTTP only: the server's public origin. See [connector](connector.md). |
+| `FATSECRET_MCP_CLIENTS` | Over HTTP only, optional: the apps that may sign in, `claude` by default. Add `chatgpt` to turn ChatGPT on. See [connector](connector.md#add-the-connector-in-chatgpt). |
 
 Generate the signing key once:
 

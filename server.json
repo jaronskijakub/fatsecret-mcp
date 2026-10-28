@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.jaronskijakub/fatsecret-mcp",
-  "description": "Unofficial, self-hosted MCP server for logging food into a FatSecret food diary through Claude.",
+  "description": "Unofficial, self-hosted MCP server for logging food to a FatSecret diary through Claude or ChatGPT.",
   "repository": {
     "url": "https://github.com/jaronskijakub/fatsecret-mcp",
     "source": "github"

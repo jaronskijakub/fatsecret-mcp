@@ -6,6 +6,7 @@ import secrets
 
 from mcp.shared.auth import OAuthToken
 
+from fatsecret_mcp.auth.client_metadata import KNOWN_CLIENTS
 from fatsecret_mcp.auth.models import AccessClaims, ConnectorIdentity, RefreshClaims, SessionClaims
 from fatsecret_mcp.auth.tokens import InvalidCredential, open_token, seal_token
 from fatsecret_mcp.config.models import Household, User
@@ -70,11 +71,23 @@ def verify_access_token(
 
 
 def is_current_session(claims: SessionClaims, identity: ConnectorIdentity, household: Household) -> bool:
-    """Whether this server issued the session and its User's configuration still allows it."""
+    """Whether this server issued the session, its app is still turned on, and its User's
+    configuration still allows it.
+    """
     if claims.issuer != identity.issuer or claims.audience != identity.resource:
         return False
 
+    if claims.client_id not in _turned_on_client_ids(household):
+        return False
+
     return is_current_generation(household, claims.user_id, claims.session_generation)
+
+
+def _turned_on_client_ids(household: Household) -> set[str]:
+    """The client IDs of the connector apps the Operator turned on, so turning one off signs it out."""
+    client_ids = {KNOWN_CLIENTS[name].client_id for name in household.connector_clients}
+
+    return client_ids
 
 
 def is_current_generation(household: Household, user_id: str, session_generation: int) -> bool:

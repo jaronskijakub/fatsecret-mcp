@@ -35,6 +35,9 @@ BASE_URL = "https://diary.example.com"
 RESOURCE = BASE_URL + "/mcp"
 CLIENT_ID = "https://claude.ai/oauth/mcp-oauth-client-metadata"
 CALLBACK = "https://claude.ai/api/mcp/auth_callback"
+CHATGPT_ID = "https://chatgpt.com/oauth/client.json"
+CHATGPT_CALLBACK = "https://chatgpt.com/connector_platform_oauth_redirect"
+CHATGPT = {"client_id": CHATGPT_ID, "redirect_uri": CHATGPT_CALLBACK}
 PASSWORD = "correct-horse-battery"
 PASSWORD_HASH = (
     "scrypt$32768$8$1$30313233343536373839616263646566$"
@@ -102,6 +105,47 @@ def client_metadata() -> dict[str, object]:
 
 
 @pytest.fixture
+def chatgpt_metadata() -> dict[str, object]:
+    """Shaped like the document ChatGPT publishes: a private_key_jwt client that also allows none."""
+    return {
+        "client_id": CHATGPT_ID,
+        "client_name": "ChatGPT",
+        "client_uri": "https://chatgpt.com",
+        "redirect_uris": [CHATGPT_CALLBACK],
+        "token_endpoint_auth_method": "private_key_jwt",
+        "token_endpoint_auth_methods_supported": ["none", "private_key_jwt"],
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+    }
+
+
+@pytest.fixture
+def both_apps(remote_household: Household) -> Household:
+    return remote_household.model_copy(update={"connector_clients": ("claude", "chatgpt")})
+
+
+@pytest.fixture
+async def both_http(
+    both_apps: Household,
+    fatsecret: FakeFatSecret,
+    clock: FakeClock,
+    client_metadata: dict[str, object],
+    chatgpt_metadata: dict[str, object],
+    metadata_requests: list[str],
+) -> AsyncIterator[httpx2.AsyncClient]:
+    """A server with ChatGPT turned on beside Claude, each publishing its own document."""
+    async with serve(
+        both_apps,
+        fatsecret,
+        clock,
+        client_metadata,
+        metadata_requests,
+        other_documents={CHATGPT_ID: chatgpt_metadata},
+    ) as client:
+        yield client
+
+
+@pytest.fixture
 def metadata_requests() -> list[str]:
     return []
 
@@ -162,22 +206,29 @@ async def serve(
     client_metadata: dict[str, object],
     metadata_requests: list[str] | None = None,
     metadata_stall: MetadataStall | None = None,
+    other_documents: dict[str, dict[str, object]] | None = None,
 ) -> AsyncGenerator[httpx2.AsyncClient]:
-    """Start the connector app for a Household, as a deploy with that configuration would."""
+    """Start the connector app for a Household, as a deploy with that configuration would.
+
+    Every metadata URL serves `client_metadata`, except those `other_documents` publishes.
+    """
     base_url = household.public_base_url
     fetched_urls = metadata_requests if metadata_requests is not None else []
 
     assert base_url is not None
 
     stall = metadata_stall if metadata_stall is not None else MetadataStall()
+    documents = other_documents or {}
 
     async def metadata_response(request: httpx2.Request) -> httpx2.Response:
-        fetched_urls.append(str(request.url))
+        url = str(request.url)
+
+        fetched_urls.append(url)
         await stall.wait()
 
         return httpx2.Response(
             status_code=200,
-            json=client_metadata,
+            json=documents.get(url, client_metadata),
         )
 
     async with httpx2.AsyncClient(transport=httpx2.MockTransport(metadata_response)) as metadata_http:
@@ -232,7 +283,7 @@ async def authorize(
     callback = urlsplit(response.headers["location"])
     query = parse_qs(callback.query)
 
-    assert callback._replace(query="").geturl() == CALLBACK
+    assert callback._replace(query="").geturl() == overrides.get("redirect_uri", CALLBACK)
     assert query["state"] == ["client-state"]
     assert query["iss"] == [str(http.base_url).rstrip("/") + "/"]
     return query["code"][0]
@@ -267,10 +318,11 @@ async def refresh(http: httpx2.AsyncClient, refresh_token: str, **overrides: str
 
 
 async def sign_in(
-    http: httpx2.AsyncClient, username: str = "jakub", password: str = PASSWORD
+    http: httpx2.AsyncClient, username: str = "jakub", password: str = PASSWORD, **app: str
 ) -> dict[str, Any]:
-    code = await authorize(http, username, password)
-    response = await exchange(http, code)
+    """Sign in through Claude, or through the app whose `client_id` and `redirect_uri` are given."""
+    code = await authorize(http, username, password, **app)
+    response = await exchange(http, code, **app)
 
     assert response.status_code == 200, response.text
 
@@ -1381,3 +1433,220 @@ async def test_cancelling_sign_in_requests_does_not_release_running_password_che
         finally:
             release.set()
             await finished.wait()
+
+
+async def test_chatgpt_is_refused_without_fetching_while_the_operator_hasnt_turned_it_on(
+    http: httpx2.AsyncClient, metadata_requests: list[str]
+) -> None:
+    response = await open_authorize(http, **CHATGPT)
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "invalid_request"
+    assert metadata_requests == []
+
+
+async def test_with_only_chatgpt_turned_on_claude_is_refused_without_fetching(
+    remote_household: Household,
+    fatsecret: FakeFatSecret,
+    clock: FakeClock,
+    client_metadata: dict[str, object],
+    chatgpt_metadata: dict[str, object],
+    metadata_requests: list[str],
+) -> None:
+    only_chatgpt = remote_household.model_copy(update={"connector_clients": ("chatgpt",)})
+
+    async with serve(
+        only_chatgpt,
+        fatsecret,
+        clock,
+        client_metadata,
+        metadata_requests,
+        other_documents={CHATGPT_ID: chatgpt_metadata},
+    ) as deployed:
+        claude = await open_authorize(deployed)
+
+        assert claude.status_code == 400
+        assert metadata_requests == []
+
+        await sign_in(deployed, **CHATGPT)
+
+    assert metadata_requests == [CHATGPT_ID]
+
+
+async def test_chatgpt_signs_in_calls_a_tool_and_refreshes(
+    both_http: httpx2.AsyncClient, fatsecret: FakeFatSecret, household: Household, clock: FakeClock
+) -> None:
+    fatsecret.add_food_entry(
+        household.user("jakub").fatsecret,
+        food_entry("Ryż", Meal.LUNCH, TODAY, kcal=195),
+    )
+
+    tokens = await sign_in(both_http, **CHATGPT)
+    response = await diary(both_http, tokens["access_token"])
+
+    assert response.status_code == 200, response.text
+    assert response.json()["result"]["structuredContent"]["totals"]["kcal"] == 195
+
+    clock.now += timedelta(hours=1)
+    refreshed = await refresh(both_http, tokens["refresh_token"], client_id=CHATGPT_ID)
+
+    assert refreshed.status_code == 200, refreshed.text
+
+    refreshed_diary = await diary(both_http, refreshed.json()["access_token"])
+
+    assert refreshed_diary.status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("client_id", "redirect_uri"),
+    [
+        (CLIENT_ID, CHATGPT_CALLBACK),
+        (CHATGPT_ID, CALLBACK),
+    ],
+)
+async def test_a_callback_pinned_for_the_other_app_is_refused_before_the_sign_in_page(
+    both_http: httpx2.AsyncClient,
+    client_metadata: dict[str, object],
+    chatgpt_metadata: dict[str, object],
+    client_id: str,
+    redirect_uri: str,
+) -> None:
+    # Both documents list both callbacks, so only each app's own pinned callbacks can refuse it.
+    client_metadata["redirect_uris"] = [CALLBACK, CHATGPT_CALLBACK]
+    chatgpt_metadata["redirect_uris"] = [CALLBACK, CHATGPT_CALLBACK]
+
+    response = await open_authorize(both_http, client_id=client_id, redirect_uri=redirect_uri)
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "invalid_request"
+    assert "set-cookie" not in response.headers
+
+
+async def test_alternating_sign_ins_fetch_each_apps_metadata_once(
+    both_http: httpx2.AsyncClient, metadata_requests: list[str]
+) -> None:
+    await sign_in(both_http)
+    await sign_in(both_http, **CHATGPT)
+    await sign_in(both_http)
+    await sign_in(both_http, **CHATGPT)
+
+    assert metadata_requests == [CLIENT_ID, CHATGPT_ID]
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"token_endpoint_auth_methods_supported": ["private_key_jwt"]},
+        {"token_endpoint_auth_methods_supported": None},
+        {"client_secret": "a-secret"},
+        {"client_id": CHATGPT_ID + "?connector=1"},
+        {"client_id": "https://chatgpt.com/oauth/another/client.json"},
+        {"grant_types": ["refresh_token"]},
+    ],
+)
+async def test_chatgpts_document_must_allow_a_public_code_client_with_its_exact_id(
+    both_http: httpx2.AsyncClient, chatgpt_metadata: dict[str, object], changes: dict[str, object]
+) -> None:
+    chatgpt_metadata.update(changes)
+
+    response = await open_authorize(both_http, **CHATGPT)
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "invalid_request"
+
+
+async def test_a_refresh_token_is_refused_when_the_other_app_presents_it(
+    both_http: httpx2.AsyncClient,
+) -> None:
+    claude = await sign_in(both_http)
+    chatgpt = await sign_in(both_http, **CHATGPT)
+
+    claude_as_chatgpt = await refresh(both_http, claude["refresh_token"], client_id=CHATGPT_ID)
+    chatgpt_as_claude = await refresh(both_http, chatgpt["refresh_token"], client_id=CLIENT_ID)
+
+    assert claude_as_chatgpt.json() == {"error": "invalid_grant"}
+    assert chatgpt_as_claude.json() == {"error": "invalid_grant"}
+
+
+async def test_each_apps_code_is_refused_by_the_other_apps_exchange(both_http: httpx2.AsyncClient) -> None:
+    code = await authorize(both_http, **CHATGPT)
+    response = await exchange(both_http, code)
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "invalid_grant"
+
+
+async def test_the_sign_in_page_names_the_app_and_the_host_it_returns_to(
+    both_http: httpx2.AsyncClient,
+) -> None:
+    chatgpt = visible_page(await open_authorize(both_http, **CHATGPT))
+    claude = visible_page(await open_authorize(both_http))
+
+    assert "your browser returns to <strong>chatgpt.com</strong>" in chatgpt
+    assert "Sign in to let ChatGPT read your diary" in chatgpt
+    assert "Connect to ChatGPT</button>" in chatgpt
+    assert "your browser returns to <strong>claude.ai</strong>" in claude
+    assert "Connect to Claude</button>" in claude
+
+
+async def test_a_failed_chatgpt_sign_in_still_names_chatgpt(both_http: httpx2.AsyncClient) -> None:
+    data = await login_form(both_http, **CHATGPT)
+
+    data.update(username="jakub", password="wrong-password")
+
+    response = await both_http.post("/authorize", data=data)
+
+    assert response.status_code == 401
+    assert "Connect to ChatGPT</button>" in response.text
+    assert "chatgpt.com" in response.headers["content-security-policy"]
+
+
+async def test_bumping_a_session_generation_signs_the_user_out_of_both_apps(
+    both_http: httpx2.AsyncClient,
+    both_apps: Household,
+    fatsecret: FakeFatSecret,
+    clock: FakeClock,
+    client_metadata: dict[str, object],
+    chatgpt_metadata: dict[str, object],
+) -> None:
+    claude = await sign_in(both_http)
+    chatgpt = await sign_in(both_http, **CHATGPT)
+    users = [bump_if_jakub(user) for user in both_apps.users]
+    bumped = with_users(both_apps, users)
+
+    async with serve(
+        bumped,
+        fatsecret,
+        clock,
+        client_metadata,
+        other_documents={CHATGPT_ID: chatgpt_metadata},
+    ) as deployed:
+        claude_diary = await diary(deployed, claude["access_token"])
+        chatgpt_diary = await diary(deployed, chatgpt["access_token"])
+        chatgpt_refresh = await refresh(deployed, chatgpt["refresh_token"], client_id=CHATGPT_ID)
+
+    assert claude_diary.status_code == 401
+    assert chatgpt_diary.status_code == 401
+    assert chatgpt_refresh.json() == {"error": "invalid_grant"}
+
+
+async def test_turning_chatgpt_off_signs_everyone_out_of_it_but_not_out_of_claude(
+    both_http: httpx2.AsyncClient,
+    remote_household: Household,
+    fatsecret: FakeFatSecret,
+    clock: FakeClock,
+    client_metadata: dict[str, object],
+) -> None:
+    claude = await sign_in(both_http)
+    chatgpt = await sign_in(both_http, **CHATGPT)
+
+    async with serve(remote_household, fatsecret, clock, client_metadata) as deployed:
+        chatgpt_diary = await diary(deployed, chatgpt["access_token"])
+        chatgpt_refresh = await refresh(deployed, chatgpt["refresh_token"], client_id=CHATGPT_ID)
+        claude_diary = await diary(deployed, claude["access_token"])
+        claude_refresh = await refresh(deployed, claude["refresh_token"])
+
+    assert chatgpt_diary.status_code == 401
+    assert chatgpt_refresh.json() == {"error": "invalid_grant"}
+    assert claude_diary.status_code == 200
+    assert claude_refresh.status_code == 200

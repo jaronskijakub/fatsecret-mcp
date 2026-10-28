@@ -8,6 +8,8 @@
 - `FATSECRET_MCP_USER`: over stdio, the id of the User the server acts as. Optional when there's only one.
 - `FATSECRET_MCP_SIGNING_KEY`: a persistent, random instance key of at least 32 characters for signed values.
 - `FATSECRET_MCP_BASE_URL`: the HTTPS origin for remote HTTP; loopback HTTP is allowed for development.
+- `FATSECRET_MCP_CLIENTS`: over HTTP, the connector apps that may sign in, comma-separated, from `claude`
+  and `chatgpt`. Defaults to `claude`.
 - Over HTTP each User needs a `connector_password_hash` (scrypt); `session_generation` defaults to zero.
 - Each User may set `meal_hours`: local start times as HH:MM for breakfast, lunch, dinner and snacks.
 
@@ -22,8 +24,9 @@ from collections.abc import Mapping
 from pydantic import AnyHttpUrl, SecretStr, TypeAdapter, ValidationError
 from pydantic_core import ErrorDetails
 
+from fatsecret_mcp.auth.client_metadata import KNOWN_CLIENTS
 from fatsecret_mcp.auth.passwords import valid_password_hash
-from fatsecret_mcp.config.models import Household, MealHours, User
+from fatsecret_mcp.config.models import DEFAULT_CONNECTOR_CLIENTS, Household, MealHours, User
 from fatsecret_mcp.fatsecret.gateway import ConsumerKey
 
 CONSUMER_KEY_VAR = "FATSECRET_CONSUMER_KEY"
@@ -32,6 +35,7 @@ USERS_VAR = "FATSECRET_MCP_USERS"
 ACTING_USER_VAR = "FATSECRET_MCP_USER"
 SIGNING_KEY_VAR = "FATSECRET_MCP_SIGNING_KEY"
 BASE_URL_VAR = "FATSECRET_MCP_BASE_URL"
+CLIENTS_VAR = "FATSECRET_MCP_CLIENTS"
 
 _USERS = TypeAdapter(list[User])
 
@@ -49,6 +53,7 @@ def load_household(environ: Mapping[str, str]) -> Household:
         raise HouseholdConfigError(f"{SIGNING_KEY_VAR} must contain at least 32 characters")
 
     users = parse_users(_required(environ, USERS_VAR))
+    connector_clients = _connector_clients(environ)
 
     return Household(
         consumer_key=SecretStr(consumer.key),
@@ -56,6 +61,7 @@ def load_household(environ: Mapping[str, str]) -> Household:
         signing_key=SecretStr(signing_key),
         users=tuple(users),
         public_base_url=public_base_url,
+        connector_clients=connector_clients,
     )
 
 
@@ -154,6 +160,30 @@ def _public_base_url(environ: Mapping[str, str]) -> str | None:
         )
 
     return str(url).rstrip("/")
+
+
+def _connector_clients(environ: Mapping[str, str]) -> tuple[str, ...]:
+    """The known connector apps the Operator turned on, in their order, each once."""
+    if CLIENTS_VAR not in environ:
+        return DEFAULT_CONNECTOR_CLIENTS
+
+    parts = environ[CLIENTS_VAR].split(",")
+    names = [part.strip() for part in parts]
+    known = ", ".join(sorted(KNOWN_CLIENTS))
+
+    if "" in names:
+        raise HouseholdConfigError(f"{CLIENTS_VAR} must list connector clients by name, from: {known}")
+
+    unknown = [name for name in names if name not in KNOWN_CLIENTS]
+
+    if unknown:
+        named = ", ".join(unknown)
+
+        raise HouseholdConfigError(f"{CLIENTS_VAR} names an unknown client: {named}; known clients: {known}")
+
+    unique = dict.fromkeys(names)
+
+    return tuple(unique)
 
 
 def _repeated_ids(users: list[User]) -> list[str]:

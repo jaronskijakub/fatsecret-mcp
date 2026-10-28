@@ -7,7 +7,7 @@ A server is run by one Operator for their household. Everyone on it trusts the O
 - The Operator can read and write every diary on the server. The configuration holds each person's FatSecret access token and secret, which work without the server, from any machine with the Operator's FatSecret API key.
 - The Operator can act as anyone on the server. The signing key signs connector tokens, so whoever holds it can make a valid token for any person. They can't read anyone's connector password, only its scrypt hash.
 - The hosting provider sees the same environment variables as the Operator.
-- Claude sees what you ask it. Diary entries, totals and targets returned by the tools become part of your conversation with Claude.
+- The AI app you use, Claude or ChatGPT, sees what you ask it. Diary entries, totals and targets returned by the tools become part of your conversation with it.
 
 Don't join a server whose Operator you wouldn't give your FatSecret password to.
 
@@ -20,9 +20,9 @@ Don't join a server whose Operator you wouldn't give your FatSecret password to.
 | Catalog foods with their servings | Server memory, shared by everyone | One hour |
 | Which drafts were confirmed | Server memory | Until the draft expires or the server restarts |
 | Request counts, sign-in counters | Server memory | Until restart |
-| Claude's client metadata document | Server memory | One hour |
-| Drafts | Signed ids held by Claude; the server stores nothing | Thirty minutes |
-| Connector access and refresh tokens | Held by Claude, signed by the server | One hour and thirty days |
+| Each connector app's client metadata document | Server memory | One hour |
+| Drafts | Signed ids held by the app; the server stores nothing | Thirty minutes |
+| Connector access and refresh tokens | Held by the app, signed by the server | One hour and thirty days |
 
 There is no database and nothing is written to disk. Drafts carry entry names, ids, units, meal, day and person, but no nutrition values. HTTP access logs are off, because sign-in URLs carry one-time codes. The server's own log lines name FatSecret methods, error types and error codes, not diary contents or credentials.
 

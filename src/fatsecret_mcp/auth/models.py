@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
+from mcp.shared.auth import OAuthClientInformationFull
 from pydantic import BaseModel, ConfigDict, Field
 
 from fatsecret_mcp.config.models import Household
@@ -40,12 +41,31 @@ class ConnectorIdentity(FrozenModel):
         )
 
 
+class KnownClient(FrozenModel):
+    """A connector app the server can let in: its published client ID and the callbacks pinned for it.
+
+    `config_name` is how the Operator turns it on in `FATSECRET_MCP_CLIENTS`; `app_name` is what the
+    sign-in page shows.
+    """
+
+    config_name: str
+    app_name: str
+    client_id: str
+    callbacks: frozenset[str]
+
+
+class ClientDocument(OAuthClientInformationFull):
+    """A client's published metadata, with the token endpoint methods it supports besides its own."""
+
+    token_endpoint_auth_methods_supported: list[str] | None = None
+
+
 class SignedValue(FrozenModel):
     expires_at: float
 
 
 class FetchLimited(FrozenModel):
-    """Claude's client metadata may not be fetched again for `retry_after` seconds."""
+    """No client's metadata may be fetched again for `retry_after` seconds."""
 
     retry_after: int
 
@@ -62,6 +82,7 @@ class AuthorizationDetails(FrozenModel):
 class LoginRequest(SignedValue):
     kind: Literal["login"] = "login"
     authorization: AuthorizationDetails
+    app_name: str
     csrf: str
 
 

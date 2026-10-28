@@ -21,6 +21,7 @@ from fatsecret_mcp.domain.models import Meal, Nutrition
 from fatsecret_mcp.fatsecret.gateway import AccessToken, ConsumerKey
 
 DEFAULT_TIMEZONE = ZoneInfo("Europe/Warsaw")
+DEFAULT_CONNECTOR_CLIENTS = ("claude",)
 
 
 def _timezone(value: object) -> object:
@@ -110,6 +111,7 @@ class Household(ConfigModel):
     signing_key: Annotated[SecretStr, Field(min_length=32)]
     users: tuple[User, ...]
     public_base_url: str | None = None
+    connector_clients: tuple[str, ...] = DEFAULT_CONNECTOR_CLIENTS
 
     @property
     def consumer(self) -> ConsumerKey:

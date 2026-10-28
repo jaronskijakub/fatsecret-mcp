@@ -268,3 +268,38 @@ def test_partial_meal_hours_keep_the_defaults_for_other_meals() -> None:
     assert hours.lunch == "11:30"
     assert hours.dinner == "16:00"
     assert hours.snacks == "21:00"
+
+
+def test_only_claudes_connector_is_on_by_default() -> None:
+    household = load_household(environ(ola()))
+
+    assert household.connector_clients == ("claude",)
+
+
+@pytest.mark.parametrize(
+    ("value", "clients"),
+    [
+        ("claude,chatgpt", ("claude", "chatgpt")),
+        (" chatgpt ", ("chatgpt",)),
+        ("chatgpt, claude, chatgpt", ("chatgpt", "claude")),
+    ],
+)
+def test_the_operator_turns_known_connector_clients_on(value: str, clients: tuple[str, ...]) -> None:
+    household = load_household(environ(ola(), FATSECRET_MCP_CLIENTS=value))
+
+    assert household.connector_clients == clients
+
+
+def test_an_unknown_connector_client_is_named() -> None:
+    message = config_error(environ(ola(), FATSECRET_MCP_CLIENTS="claude,gemini"))
+
+    assert "FATSECRET_MCP_CLIENTS" in message
+    assert "gemini" in message
+    assert "chatgpt, claude" in message
+
+
+@pytest.mark.parametrize("value", ["", " ", ",", "claude,"])
+def test_an_empty_connector_client_name_is_rejected(value: str) -> None:
+    message = config_error(environ(ola(), FATSECRET_MCP_CLIENTS=value))
+
+    assert "FATSECRET_MCP_CLIENTS" in message

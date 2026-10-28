@@ -1,4 +1,4 @@
-"""GET /authorize: check Claude's authorization request, then show the sign-in page."""
+"""GET /authorize: check a connector app's authorization request, then show the sign-in page."""
 
 from __future__ import annotations
 
@@ -6,14 +6,20 @@ import re
 import secrets
 
 from mcp.server.auth.handlers.authorize import AuthorizationRequest
-from mcp.shared.auth import OAuthClientInformationFull
 from pydantic import ValidationError
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, Response
 
-from fatsecret_mcp.auth.client_metadata import CLAUDE_CALLBACKS, ClaudeMetadata
+from fatsecret_mcp.auth.client_metadata import ClientMetadata
 from fatsecret_mcp.auth.login_page import login_page
-from fatsecret_mcp.auth.models import AuthorizationDetails, ConnectorIdentity, FetchLimited, LoginRequest
+from fatsecret_mcp.auth.models import (
+    AuthorizationDetails,
+    ClientDocument,
+    ConnectorIdentity,
+    FetchLimited,
+    KnownClient,
+    LoginRequest,
+)
 from fatsecret_mcp.auth.responses import oauth_error, temporarily_unavailable
 from fatsecret_mcp.auth.tokens import seal_token
 from fatsecret_mcp.domain.diary_day import Clock
@@ -25,7 +31,7 @@ _SCOPE = "diary"
 
 
 async def start_authorization(
-    request: Request, *, identity: ConnectorIdentity, claude_metadata: ClaudeMetadata, clock: Clock
+    request: Request, *, identity: ConnectorIdentity, client_metadata: ClientMetadata, clock: Clock
 ) -> Response:
     try:
         params = AuthorizationRequest.model_validate(request.query_params)
@@ -37,13 +43,18 @@ async def start_authorization(
     if refusal is not None:
         return oauth_error(refusal)
 
-    client = await claude_metadata.lookup(params.client_id)
+    client = client_metadata.known_client(params.client_id)
+
+    if client is None:
+        return oauth_error("invalid_request")
+
+    document = await client_metadata.lookup(client)
     redirect_uri = request.query_params.get("redirect_uri", "")
 
-    if isinstance(client, FetchLimited):
-        return temporarily_unavailable(client.retry_after)
+    if isinstance(document, FetchLimited):
+        return temporarily_unavailable(document.retry_after)
 
-    if client is None or not _is_allowed_callback(client, redirect_uri):
+    if document is None or not _is_allowed_callback(client, document, redirect_uri):
         return oauth_error("invalid_request")
 
     scopes = _requested_scopes(params)
@@ -60,7 +71,7 @@ async def start_authorization(
         state=params.state,
     )
 
-    return _sign_in_form(details, identity, clock().timestamp())
+    return _sign_in_form(details, client, identity, clock().timestamp())
 
 
 def _refused_pkce_or_resource(
@@ -77,11 +88,11 @@ def _refused_pkce_or_resource(
     return None
 
 
-def _is_allowed_callback(client: OAuthClientInformationFull, redirect_uri: str) -> bool:
-    """One of Claude's own callbacks, also listed in the client's metadata."""
-    registered = [str(uri) for uri in client.redirect_uris or []]
+def _is_allowed_callback(client: KnownClient, document: ClientDocument, redirect_uri: str) -> bool:
+    """One of the client's own pinned callbacks, also listed in its published metadata."""
+    registered = [str(uri) for uri in document.redirect_uris or []]
 
-    return redirect_uri in CLAUDE_CALLBACKS and redirect_uri in registered
+    return redirect_uri in client.callbacks and redirect_uri in registered
 
 
 def _requested_scopes(params: AuthorizationRequest) -> tuple[str, ...]:
@@ -91,16 +102,19 @@ def _requested_scopes(params: AuthorizationRequest) -> tuple[str, ...]:
     return tuple(params.scope.split())
 
 
-def _sign_in_form(details: AuthorizationDetails, identity: ConnectorIdentity, now: float) -> HTMLResponse:
+def _sign_in_form(
+    details: AuthorizationDetails, client: KnownClient, identity: ConnectorIdentity, now: float
+) -> HTMLResponse:
     """The sign-in page, carrying the sealed request and its CSRF value in a browser cookie."""
     csrf = secrets.token_urlsafe(32)
     login = LoginRequest(
         authorization=details,
+        app_name=client.app_name,
         csrf=csrf,
         expires_at=now + LOGIN_LIFETIME,
     )
     sealed = seal_token(login, identity.signing_key)
-    response = login_page(sealed, details.redirect_uri)
+    response = login_page(sealed, login)
 
     response.set_cookie(
         LOGIN_COOKIE,

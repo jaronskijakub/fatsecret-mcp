@@ -1,4 +1,4 @@
-"""POST /authorize: turn a submitted name and password into a one-use code for Claude."""
+"""POST /authorize: turn a submitted name and password into a one-use code for the connector app."""
 
 from __future__ import annotations
 
@@ -56,12 +56,12 @@ async def sign_in(
     verified = await _check_password(password_checks, user, password)
 
     if verified is None:
-        return throttled_page(sealed, login.authorization.redirect_uri, _BUSY_RETRY_AFTER)
+        return throttled_page(sealed, login, _BUSY_RETRY_AFTER)
 
     if user is None or not verified:
         return login_page(
             sealed,
-            login.authorization.redirect_uri,
+            login,
             alert=INVALID_SIGN_IN,
             status_code=401,
         )
@@ -99,16 +99,15 @@ def _refused_by_limits(
     throttle: SignInThrottle, login: LoginRequest, sealed: str, username: str, clock: Clock
 ) -> HTMLResponse | None:
     """Count the attempt server-wide, for this form and for this name, before any password check."""
-    redirect_uri = login.authorization.redirect_uri
     retry_after = throttle.admit_server(clock().timestamp())
 
     if retry_after is not None:
-        return throttled_page(sealed, redirect_uri, retry_after)
+        return throttled_page(sealed, login, retry_after)
 
     if not throttle.admit_form(login.csrf, login.expires_at, clock().timestamp()):
         return login_page(
             None,
-            redirect_uri,
+            login,
             alert=FORM_EXHAUSTED,
             status_code=429,
         )
@@ -116,7 +115,7 @@ def _refused_by_limits(
     retry_after = throttle.admit(username, clock().timestamp())
 
     if retry_after is not None:
-        return throttled_page(sealed, redirect_uri, retry_after)
+        return throttled_page(sealed, login, retry_after)
 
     return None
 
@@ -133,7 +132,7 @@ async def _check_password(password_checks: PasswordChecks, user: User | None, pa
 
 
 def _redirect_with_code(login: LoginRequest, user: User, identity: ConnectorIdentity, now: float) -> Response:
-    """Send the browser back to Claude's callback with a one-use code for this User."""
+    """Send the browser back to the app's callback with a one-use code for this User."""
     code = CodeClaims(
         authorization=login.authorization,
         user_id=user.id,

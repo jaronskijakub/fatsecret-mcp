@@ -7,29 +7,37 @@ from urllib.parse import urlsplit
 
 from starlette.responses import HTMLResponse
 
+from fatsecret_mcp.auth.models import LoginRequest
+
 INVALID_SIGN_IN = "Invalid user name or password."
 THROTTLED_SIGN_IN = "Too many sign-in attempts. Try again shortly."
 FORM_EXHAUSTED = "Too many submissions of this form. Start sign-in again from your connector."
 
 
 def login_page(
-    sealed: str | None, redirect_uri: str, *, alert: str | None = None, status_code: int = 200
+    sealed: str | None,
+    login: LoginRequest,
+    *,
+    alert: str | None = None,
+    status_code: int = 200,
 ) -> HTMLResponse:
     """The page with a sign-in form for the sealed login request, or only the alert without one."""
+    redirect_uri = login.authorization.redirect_uri
+    app_name = login.app_name
     message = f'<p role="alert">{alert}</p>' if alert else ""
-    form = _form(sealed, redirect_uri) if sealed is not None else ""
+    form = _form(sealed, redirect_uri, app_name) if sealed is not None else ""
 
     return HTMLResponse(
-        content=_document(message, form),
+        content=_document(message, form, app_name),
         status_code=status_code,
         headers=_headers(redirect_uri),
     )
 
 
-def throttled_page(sealed: str, redirect_uri: str, retry_after: int) -> HTMLResponse:
+def throttled_page(sealed: str, login: LoginRequest, retry_after: int) -> HTMLResponse:
     response = login_page(
         sealed,
-        redirect_uri,
+        login,
         alert=THROTTLED_SIGN_IN,
         status_code=429,
     )
@@ -39,7 +47,8 @@ def throttled_page(sealed: str, redirect_uri: str, retry_after: int) -> HTMLResp
     return response
 
 
-def _form(sealed: str, redirect_uri: str) -> str:
+def _form(sealed: str, redirect_uri: str, app_name: str) -> str:
+    """The form; the host it names comes from a callback already pinned for this app."""
     callback_host = urlsplit(redirect_uri).hostname or ""
 
     return f"""<p>After you sign in, your browser returns to <strong>{escape(callback_host)}</strong>.</p>
@@ -47,16 +56,16 @@ def _form(sealed: str, redirect_uri: str) -> str:
 <input type="hidden" name="request" value="{escape(sealed, quote=True)}">
 <p><label>User name <input name="username" autocomplete="username" required></label></p>
 <p><label>Connector password <input type="password" name="password" autocomplete="current-password" required>
-</label></p><button type="submit">Connect to Claude</button>
+</label></p><button type="submit">Connect to {escape(app_name)}</button>
 </form>"""
 
 
-def _document(message: str, form: str) -> str:
+def _document(message: str, form: str, app_name: str) -> str:
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <title>Connect your FatSecret diary</title></head>
 <body><main><h1>Connect your FatSecret diary</h1>
-<p>Sign in to let Claude read your diary and save the drafts you confirm.</p>
+<p>Sign in to let {escape(app_name)} read your diary and save the drafts you confirm.</p>
 {message}
 {form}</main></body></html>"""
 

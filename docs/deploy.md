@@ -24,13 +24,14 @@ These steps run the published image on [Railway](https://railway.com). An always
    - `FATSECRET_CONSUMER_KEY`, `FATSECRET_CONSUMER_SECRET` and `FATSECRET_MCP_SIGNING_KEY` from your `.env`
    - `FATSECRET_MCP_BASE_URL` = `https://<your-domain>.up.railway.app`, with no path or trailing slash
    - `FATSECRET_MCP_USERS`, the JSON line from `add-user`
+   - optionally `FATSECRET_MCP_CLIENTS` = `claude,chatgpt`, to let ChatGPT sign in as well
 
    The Raw Editor suits plain `KEY=value` lines. Add the JSON value through New Variable instead, pasted without the surrounding single quotes.
 5. **Deploy and check.** Wait for the deployment to turn active, then open `https://<your-domain>.up.railway.app/health`. It returns `{"status":"ok"}`.
 6. **Spending limit.** In your workspace's usage settings, set a Compute email alert, and a hard limit if you want one. A hard limit stops every service in the workspace, not only this one.
-7. **Add the connector** in Claude ([connector](connector.md)).
+7. **Add the connector** in Claude or ChatGPT ([connector](connector.md)).
 
-To update, change the image tag to a newer version or commit SHA and redeploy. When a release changes the tools, its changelog entry says so: reconnect the connector in Claude afterwards, since Claude keeps the tool descriptions it saw when it connected. To add a person, run `add-user` against your current `FATSECRET_MCP_USERS` and replace the variable with the new value. Variables survive deploys.
+To update, change the image tag to a newer version or commit SHA and redeploy. When a release changes the tools, its changelog entry says so: reconnect the connector in Claude or ChatGPT afterwards, since the app keeps the tool descriptions it saw when it connected. To add a person, run `add-user` against your current `FATSECRET_MCP_USERS` and replace the variable with the new value. Variables survive deploys.
 
 ## Other container hosts
 
