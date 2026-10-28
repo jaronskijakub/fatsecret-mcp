@@ -15,7 +15,7 @@ https://github.com/user-attachments/assets/44dfd991-5434-47ad-8b84-bcad24415a1f
 
 A photo of dinner, the draft Claude proposes, a "yes", the day so far, and the new entry in the FatSecret app.
 
-fatsecret-mcp is a self-hosted [MCP](https://modelcontextprotocol.io) server. It connects Claude, or ChatGPT when the Operator turns it on, to your own [FatSecret](https://www.fatsecret.com) food diary, the one you see in the FatSecret app. Claude can read a day or a few weeks of it against your daily calorie and macro targets. It can find foods in the FatSecret catalog and draft entries from a description or a photo. Each draft shows the amounts, calories, macros, a suggested meal and how your day looks after adding it. When a packaged product isn't in the catalog, a photo of its nutrition label is enough.
+fatsecret-mcp is a self-hosted [MCP](https://modelcontextprotocol.io) server. It connects Claude, or ChatGPT when the Operator turns it on, to your own [FatSecret](https://www.fatsecret.com) food diary, the one you see in the FatSecret app. Claude can read a day or a few weeks of it against your daily calorie and macro targets. It can find foods in the FatSecret catalog and draft entries from a description or a photo. Each draft shows the amounts, calories, macros, a suggested meal and how your day looks after adding it. When a packaged product isn't in the catalog, a photo of its nutrition label is enough. A wrong entry can be fixed or removed the same way, through a draft.
 
 One server serves a household: a few people, each signed in with their own FatSecret account. There's no public instance, so you run your own.
 
@@ -131,10 +131,23 @@ If you log a product often, adding it once in the FatSecret app gives you exact 
 
 Claude reads the earlier day and drafts the entries you keep, without searching the catalog. The server copies each entry's food, serving, name and nutrition from your diary and scales them when you change an amount, always shown in grams or ml. It also works for products the catalog can't return, such as ones you added in the FatSecret app, and for stand-ins, which keep the product's name and don't need the label again. An amount that wasn't logged in grams or ml, such as "2 slices", is looked up once to show it in grams; when no weight is known, the entry is repeated as it was.
 
+## Fix or undo an entry
+
+> **You:** *(right after saving)* Undo that.
+>
+> **Claude:** Here's the draft: remove beef bibimbap, 1 bowl (480 g), 640 kcal, from today's lunch. You'd be back at 780 of 2,200 kcal. A removed entry can't be restored, only logged again. Remove it?
+>
+> **You:** Actually, keep it, it was just 300 g.
+>
+> **Claude:** Here's the new draft: beef bibimbap, 1 bowl (480 g) → 300 g, 640 → 400 kcal, still under lunch. Save the change?
+
+A draft can also change entries already in your diary, including ones you logged in the FatSecret app: a new amount in grams or ml, another meal on the same day, or a new name. It can remove them too. Each change shows the entry before and after, and how each day looks afterwards. Nothing changes until you say yes. For "undo that", Claude removes the entries the last save wrote. For anything else, it reads the day first and asks when it's unclear which entry you mean.
+
+FatSecret can't move an entry to another food or another day. So "it was chicken thigh, not breast" or "that was yesterday" becomes one draft that adds the right entry and removes the wrong one. The new entry is saved first, so if something fails halfway you see a duplicate rather than a gap. Changes reach back up to a year.
+
 ## What it doesn't do
 
 - It can't look up barcodes, regional catalogs such as a Polish one, or custom foods. A free key reaches only the US catalog, so Claude searches it in English.
-- It can't edit or delete entries. Do that in the FatSecret app.
 - It doesn't track weight, exercise or recipes, only food entries.
 - It doesn't serve strangers. There's no public server, and each server has a fixed list of people.
 
@@ -184,7 +197,6 @@ Report vulnerabilities through [SECURITY.md](https://github.com/jaronskijakub/fa
 
 ## Roadmap
 
-- Edit and delete food entries, starting with "undo that" right after a wrong save.
 - Custom foods for users with a FatSecret Premier key, so a branded product can be logged with exact values instead of a stand-in.
 - Open Food Facts lookups for products the US catalog lacks, by name or barcode.
 - Search your own foods by name. Anything in your diary can already be repeated from the day you logged it, but products you often log aren't searched yet; reading them from your whole diary took too many API requests, so this needs another approach.

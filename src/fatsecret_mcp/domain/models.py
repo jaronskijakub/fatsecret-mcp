@@ -127,13 +127,42 @@ class DraftEntry:
 
 
 @dataclass(frozen=True)
+class EntryEdit:
+    """Only the values needed to change one Food Entry in place; None leaves a value as it is."""
+
+    food_entry_id: str
+    diary_day: date
+    number_of_units: float | None
+    meal: Meal | None
+    entry_name: str | None
+
+
+@dataclass(frozen=True)
+class EntryRemoval:
+    food_entry_id: str
+    diary_day: date
+
+
+EntryChange = EntryEdit | EntryRemoval
+
+
+@dataclass(frozen=True)
+class Additions:
+    """New Food Entries for one Meal of one Diary Day."""
+
+    entries: tuple[DraftEntry, ...]
+    meal: Meal
+    diary_day: date
+
+
+@dataclass(frozen=True)
 class Draft:
     """The self-contained proposal that is signed and returned as a Draft id."""
 
     user_id: str
-    items: tuple[DraftEntry, ...]
-    meal: Meal
-    diary_day: date
+    additions: Additions | None
+    """None when the Draft only changes or removes Food Entries."""
+    changes: tuple[EntryChange, ...]
     expires_at: datetime
 
 
@@ -160,6 +189,16 @@ class DraftItem:
     """Set when the entry logs a catalog Food in place of a product missing from the catalog."""
     repeated_from: RepeatedFrom | None = None
     """Set when the entry logs a Food Entry from the Food Diary again."""
+
+
+@dataclass(frozen=True)
+class DraftChange:
+    """One proposed change, with the Food Entry before and after, shown before confirmation."""
+
+    change: EntryChange
+    before: FoodEntry
+    after: FoodEntry | None
+    """The entry once changed; None when it's removed."""
 
 
 @dataclass(frozen=True)
@@ -197,10 +236,17 @@ class ConfirmedEntry:
 
 
 @dataclass(frozen=True)
+class ConfirmedChange:
+    change: EntryChange
+    written: bool
+
+
+@dataclass(frozen=True)
 class Confirmation:
     """What confirming a Draft wrote to the Food Diary."""
 
     draft: Draft
     entries: tuple[ConfirmedEntry, ...]
+    changes: tuple[ConfirmedChange, ...]
     failure: str | None
     """Why writing stopped part-way through; None when every item was written."""

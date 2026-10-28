@@ -1,0 +1,24 @@
+{
+  "description": "food_entry.edit with only number_of_units: a Generic entry of 150 g changed to 200 g.",
+  "source": "recorded",
+  "recorded_on": "2026-10-28",
+  "request": {
+    "http_method": "POST",
+    "url": "https://platform.fatsecret.com/rest/server.api",
+    "params": {
+      "method": "food_entry.edit",
+      "format": "json",
+      "food_entry_id": "9000001",
+      "number_of_units": "200"
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json; charset=utf-8",
+    "json": {
+      "success": {
+        "value": "1"
+      }
+    }
+  }
+}

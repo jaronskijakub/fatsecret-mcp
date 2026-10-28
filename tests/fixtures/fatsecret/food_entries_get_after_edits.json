@@ -1,0 +1,64 @@
+{
+  "description": "Food Entries after the edits: the Generic entry at 120 g in Lunch, the Brand entry after an edit to 3 units.",
+  "source": "recorded",
+  "recorded_on": "2026-10-28",
+  "request": {
+    "http_method": "GET",
+    "url": "https://platform.fatsecret.com/rest/server.api",
+    "params": {
+      "method": "food_entries.get.v2",
+      "format": "json",
+      "date": "16456"
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json; charset=utf-8",
+    "json": {
+      "food_entries": {
+        "food_entry": [
+          {
+            "calories": "234",
+            "carbohydrate": "0",
+            "cholesterol": "100",
+            "date_int": "16456",
+            "fat": "9.26",
+            "fiber": "0",
+            "food_entry_description": "120 g Chicken Breast",
+            "food_entry_id": "9000001",
+            "food_entry_name": "Chicken Breast",
+            "food_id": "1641",
+            "meal": "Lunch",
+            "monounsaturated_fat": "3.606",
+            "number_of_units": "120.000",
+            "polyunsaturated_fat": "1.975",
+            "potassium": "292",
+            "protein": "35.46",
+            "saturated_fat": "2.606",
+            "serving_id": "50321",
+            "sodium": "472",
+            "sugar": "0"
+          },
+          {
+            "calories": "222",
+            "carbohydrate": "27.60",
+            "date_int": "16456",
+            "fat": "3.90",
+            "fiber": "0",
+            "food_entry_description": "3 servings Skyr Waniliowy",
+            "food_entry_id": "9000002",
+            "food_entry_name": "Skyr Waniliowy",
+            "food_id": "51467582",
+            "meal": "Lunch",
+            "number_of_units": "3.000",
+            "protein": "19.20",
+            "saturated_fat": "2.700",
+            "serving_id": "43596665",
+            "sodium": "120",
+            "sugar": "9.90"
+          }
+        ]
+      }
+    }
+  }
+}

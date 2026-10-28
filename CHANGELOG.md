@@ -6,11 +6,15 @@ All notable changes to this project are listed here. The format follows [Keep a 
 
 ### Added
 
+- Changing and removing Food Entries through a draft: "undo that" right after a save, "it was 200 g, not 300", "move it to breakfast", a new name, or "delete yesterday's coffee". A draft shows each entry before and after and how each day looks afterwards, and can also add entries, so "chicken thigh, not breast" or "that was yesterday" is one draft. This works for any entry in your diary from the past year, including ones logged in the FatSecret app. A removed entry can't be restored, only logged again.
+- `confirm_draft` asks Claude Code to get your approval before every call, even in its automatic modes.
 - ChatGPT as a second connector app, off by default. Set `FATSECRET_MCP_CLIENTS=claude,chatgpt` to let people sign in from ChatGPT with the same user `id` and connector password. Its client ID and callback are pinned like Claude's, and each app gets its own tokens.
 
 ### Changed
 
 - The sign-in page names the app being connected and the host it returns to.
+
+After upgrading, reconnect the connector in Claude, so that Claude sees the new tool options.
 
 ## [0.2.0] - 2026-10-25
 

@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Protocol
 
-from fatsecret_mcp.domain.models import CatalogFood, DraftEntry, Food, FoodEntry, Meal, Nutrition
+from fatsecret_mcp.domain.models import CatalogFood, DraftEntry, EntryEdit, Food, FoodEntry, Meal, Nutrition
 
 
 @dataclass(frozen=True)
@@ -62,6 +62,17 @@ class FatSecretGateway(Protocol):
 
         It works for any Food the User could log in the app, including Foods the catalog can't return.
         """
+        ...
+
+    async def edit_food_entry(self, user: AccessToken, edit: EntryEdit) -> None:
+        """Change one Food Entry's units, Meal or name in place, sending only the values that are set.
+
+        It works for Brand Foods too. A Food Entry's Food and Diary Day can't change.
+        """
+        ...
+
+    async def delete_food_entry(self, user: AccessToken, food_entry_id: str) -> None:
+        """Remove one Food Entry; FatSecret answers success even when it was already removed."""
         ...
 
     async def request_token(self) -> RequestToken:

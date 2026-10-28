@@ -14,7 +14,7 @@ from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
 from fatsecret_mcp.domain.diary_day import Clock
-from fatsecret_mcp.domain.models import CatalogFood, DraftEntry, Food, FoodEntry, Meal, Nutrition
+from fatsecret_mcp.domain.models import CatalogFood, DraftEntry, EntryEdit, Food, FoodEntry, Meal, Nutrition
 from fatsecret_mcp.fatsecret.errors import BudgetSpent, FatSecretError
 from fatsecret_mcp.fatsecret.gateway import AccessToken, FatSecretGateway, RequestToken
 from fatsecret_mcp.limits import RollingWindow
@@ -86,6 +86,12 @@ class BudgetedGateway:
 
     async def create_food_entry(self, user: AccessToken, entry: DraftEntry, meal: Meal, day: date) -> str:
         return await self._counted(lambda: self._fatsecret.create_food_entry(user, entry, meal, day))
+
+    async def edit_food_entry(self, user: AccessToken, edit: EntryEdit) -> None:
+        return await self._counted(lambda: self._fatsecret.edit_food_entry(user, edit))
+
+    async def delete_food_entry(self, user: AccessToken, food_entry_id: str) -> None:
+        return await self._counted(lambda: self._fatsecret.delete_food_entry(user, food_entry_id))
 
     async def request_token(self) -> RequestToken:
         return await self._counted(self._fatsecret.request_token)

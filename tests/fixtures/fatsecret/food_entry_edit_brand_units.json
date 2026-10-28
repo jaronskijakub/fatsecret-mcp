@@ -1,0 +1,24 @@
+{
+  "description": "food_entry.edit with only number_of_units for a Brand entry logged as 2 units.",
+  "source": "recorded",
+  "recorded_on": "2026-10-28",
+  "request": {
+    "http_method": "POST",
+    "url": "https://platform.fatsecret.com/rest/server.api",
+    "params": {
+      "method": "food_entry.edit",
+      "format": "json",
+      "food_entry_id": "9000002",
+      "number_of_units": "3"
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json; charset=utf-8",
+    "json": {
+      "success": {
+        "value": "1"
+      }
+    }
+  }
+}

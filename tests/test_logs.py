@@ -12,7 +12,7 @@ from pydantic import SecretStr
 
 from fatsecret_mcp.config.loader import load_household
 from fatsecret_mcp.domain.draft_token import seal_draft
-from fatsecret_mcp.domain.models import Draft, DraftEntry, Meal
+from fatsecret_mcp.domain.models import Additions, Draft, DraftEntry, Meal
 from fatsecret_mcp.fatsecret.budget import daily_budget
 from fatsecret_mcp.fatsecret.client import FatSecretApi
 from fatsecret_mcp.fatsecret.food_cache import FoodCache
@@ -123,11 +123,15 @@ def recorded_skyr_draft(signing_key: SecretStr) -> str:
         number_of_units=2,
         entry_name="Skyr Waniliowy",
     )
-    draft = Draft(
-        user_id="jakub",
-        items=(entry,),
+    additions = Additions(
+        entries=(entry,),
         meal=Meal.LUNCH,
         diary_day=date(2015, 1, 12),
+    )
+    draft = Draft(
+        user_id="jakub",
+        additions=additions,
+        changes=(),
         expires_at=CLOCK.now + timedelta(minutes=30),
     )
 

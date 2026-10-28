@@ -1,0 +1,25 @@
+{
+  "description": "food_entry.edit of an entry already deleted.",
+  "source": "recorded",
+  "recorded_on": "2026-10-28",
+  "request": {
+    "http_method": "POST",
+    "url": "https://platform.fatsecret.com/rest/server.api",
+    "params": {
+      "method": "food_entry.edit",
+      "format": "json",
+      "food_entry_id": "9000001",
+      "number_of_units": "100"
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json; charset=utf-8",
+    "json": {
+      "error": {
+        "code": 106,
+        "message": "Invalid ID: please check your food_entry_id"
+      }
+    }
+  }
+}

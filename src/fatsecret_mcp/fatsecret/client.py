@@ -17,7 +17,7 @@ from urllib.parse import quote
 
 import httpx2
 
-from fatsecret_mcp.domain.models import CatalogFood, DraftEntry, Food, FoodEntry, Meal, Nutrition
+from fatsecret_mcp.domain.models import CatalogFood, DraftEntry, EntryEdit, Food, FoodEntry, Meal, Nutrition
 from fatsecret_mcp.fatsecret import errors, parsing
 from fatsecret_mcp.fatsecret.errors import FatSecretError, PinRejected, UpstreamFailure
 from fatsecret_mcp.fatsecret.gateway import AccessToken, ConsumerKey, RequestToken
@@ -94,6 +94,27 @@ class FatSecretApi:
         body = await self._call("food_entry.create", params, user, http_method="POST")
 
         return parsing.created_food_entry_id(body)
+
+    async def edit_food_entry(self, user: AccessToken, edit: EntryEdit) -> None:
+        params = {"food_entry_id": edit.food_entry_id}
+
+        if edit.entry_name is not None:
+            params["food_entry_name"] = edit.entry_name
+        if edit.number_of_units is not None:
+            params["number_of_units"] = parsing.number_text(edit.number_of_units)
+        if edit.meal is not None:
+            params["meal"] = parsing.meal_text(edit.meal)
+
+        body = await self._call("food_entry.edit", params, user, http_method="POST")
+
+        parsing.check_success(body)
+
+    async def delete_food_entry(self, user: AccessToken, food_entry_id: str) -> None:
+        body = await self._call(
+            "food_entry.delete", {"food_entry_id": food_entry_id}, user, http_method="POST"
+        )
+
+        parsing.check_success(body)
 
     async def request_token(self) -> RequestToken:
         token, secret = await self._sign_in_call(REQUEST_TOKEN_URL, {"oauth_callback": "oob"}, None)

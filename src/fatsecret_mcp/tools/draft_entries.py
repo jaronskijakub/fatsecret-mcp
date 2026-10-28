@@ -21,15 +21,31 @@ from fatsecret_mcp.domain.drafts import (
     draft_item,
     draft_totals,
 )
-from fatsecret_mcp.domain.meal_suggestion import ask_about_previous_day, suggest_meal
-from fatsecret_mcp.domain.models import Draft, DraftItem, Food, FoodEntry, Meal, MetricAmount, Serving
-from fatsecret_mcp.domain.repeated_entries import (
-    check_source_day,
-    repeated_item,
-    serving_metric_amount,
-    source_entry,
-    written_metric_amount,
+from fatsecret_mcp.domain.entry_amounts import serving_metric_amount, written_metric_amount
+from fatsecret_mcp.domain.entry_changes import (
+    REMOVAL_NOTE,
+    changed_days,
+    check_changed_day,
+    check_one_change_per_entry,
+    entries_after,
+    proposed_edit,
+    proposed_removal,
 )
+from fatsecret_mcp.domain.meal_suggestion import ask_about_previous_day, suggest_meal
+from fatsecret_mcp.domain.models import (
+    Additions,
+    Draft,
+    DraftChange,
+    DraftItem,
+    EntryRemoval,
+    Food,
+    FoodEntry,
+    Meal,
+    MetricAmount,
+    Nutrition,
+    Serving,
+)
+from fatsecret_mcp.domain.repeated_entries import check_source_day, entry_on_day, repeated_item
 from fatsecret_mcp.domain.stand_ins import check_label, stand_in_item
 from fatsecret_mcp.fatsecret.catalog import loggable_foods
 from fatsecret_mcp.fatsecret.diary import UserDiary
@@ -42,17 +58,20 @@ from fatsecret_mcp.tools.schemas import (
     DayAfter,
     DiaryDayOrToday,
     DiaryEntryDraftInput,
-    DraftItemInput,
     DraftItems,
+    EntryChangeDraftInput,
     FoodDraft,
     FoodDraftInput,
     NutritionLabelDraftInput,
+    OtherDayAfter,
+    ProposedChange,
     ProposedEntry,
     as_tool_result,
 )
 
-# The entries of each Diary Day that a Draft's Diary Entry items repeat from.
-SourceDays = dict[date, list[FoodEntry]]
+# The entries of each Diary Day that a Draft's items repeat from or change.
+DiaryDays = dict[date, list[FoodEntry]]
+AdditionInput = FoodDraftInput | NutritionLabelDraftInput | DiaryEntryDraftInput
 
 
 def register(
@@ -73,7 +92,9 @@ def register(
     async def draft_entries(
         items: DraftItems, meal: Meal | None = None, diary_day: DiaryDayOrToday = None
     ) -> Annotated[CallToolResult, FoodDraft]:
-        """Propose Food Entries without writing to the Food Diary. Show the Draft to the User.
+        """Propose new Food Entries, and changes to logged ones, without writing to the Food Diary.
+
+        Show the Draft to the User.
 
         A Food item uses Food and Serving ids from search_foods. number_of_units is the FatSecret unit
         count, not necessarily grams: scale it from the Serving's number_of_units.
@@ -94,42 +115,80 @@ def register(
         of. Then draft the chosen entries by diary_day and food_entry_id, with metric_amount for a
         changed amount in grams or ml.
 
+        A change item changes or removes a Food Entry already in the Food Diary, by diary_day and
+        food_entry_id: change="remove", or change="edit" with a new metric_amount in grams or ml,
+        a meal on the same Diary Day or a food_entry_name. For "undo that" after a confirm_draft,
+        remove the food_entry_ids it returned; undoing a change is a change back. For any other
+        change, read the Diary Day with get_diary_day first, name the entries to change,
+        and ask when it's unclear which one is meant. The Food or Diary Day of an entry can't change:
+        for "chicken thigh, not breast", remove the entry and add a Food item; for
+        "that was yesterday", remove it and add a Diary Entry item with the same food_entry_id, in
+        one Draft whose diary_day is yesterday. Show each change before and after, and the
+        removal_note when there is one.
+
         A Draft holds at most 20 items: split a larger meal into several Drafts.
 
-        Include assumptions about estimated amounts. Always ask the User whether the suggested Meal
-        is correct. If previous_day_suggested is true, ask whether to use Snacks on the
-        previous Diary Day instead. A correction needs a new Draft with the explicit Meal or Diary Day.
+        Include assumptions about estimated amounts. When the Draft has new items, always
+        ask the User whether the suggested Meal is correct. If previous_day_suggested is true, ask whether to
+        use Snacks on the previous Diary Day instead. meal and diary_day are for new items only. A
+        correction needs a new Draft with the explicit Meal or Diary Day.
         Nothing is written by this tool; a Draft expires after thirty minutes.
         """
         now = clock()
         user_today = today(now, user.timezone)
+        additions_input, changes_input = _additions_and_changes(items)
+        has_additions = bool(additions_input)
+
+        if not has_additions and (meal is not None or diary_day is not None):
+            raise ToolError(
+                "meal and diary_day are for new Food Entries. To move an entry, set meal on its change item."
+            )
+
         day = diary_day or user_today
-        selected_meal = meal or suggest_meal(now, user.timezone, user.meal_hours.as_starts())
+        meal_suggested = has_additions and meal is None
         previous_day_suggested = (
-            meal is None and diary_day is None and ask_about_previous_day(now, user.timezone)
+            meal_suggested and diary_day is None and ask_about_previous_day(now, user.timezone)
         )
         prepared: list[DraftItem] = []
+        changes: list[DraftChange] = []
 
         try:
-            check_diary_day(day, user_today)
+            if has_additions:
+                check_diary_day(day, user_today)
 
-            source_days = await _source_days(items, diary, user_today)
+            changed_ids = [item.food_entry_id for item in changes_input]
 
-            for item in items:
-                prepared.append(await _prepared_item(item, fatsecret, food_cache, source_days))
+            check_one_change_per_entry(changed_ids)
 
-            entries = source_days[day] if day in source_days else await diary.entries(day)
+            diary_days = await _diary_days(items, diary, user_today)
+
+            for item in additions_input:
+                prepared.append(await _prepared_item(item, fatsecret, food_cache, diary_days))
+
+            for item in changes_input:
+                changes.append(await _prepared_change(item, fatsecret, food_cache, diary_days))
+
+            if has_additions and day not in diary_days:
+                diary_days[day] = await diary.entries(day)
         except (FatSecretError, InvalidDraftItem, UnlikelyDiaryDay) as error:
             raise ToolError(str(error)) from error
 
-        totals = draft_totals(entries, prepared, user.daily_targets.as_nutrition())
-        draft_entries_to_seal = [item.entry for item in prepared]
-        sealed_items = tuple(draft_entries_to_seal)
+        additions = None
+
+        if has_additions:
+            selected_meal = meal or suggest_meal(now, user.timezone, user.meal_hours.as_starts())
+            entries_to_seal = [item.entry for item in prepared]
+            additions = Additions(
+                entries=tuple(entries_to_seal),
+                meal=selected_meal,
+                diary_day=day,
+            )
+
+        sealed_changes = [change.change for change in changes]
         sealed = Draft(
             user_id=user.id,
-            items=sealed_items,
-            meal=selected_meal,
-            diary_day=day,
+            additions=additions,
+            changes=tuple(sealed_changes),
             expires_at=draft_expiry(now),
         )
         draft_id = seal_draft(sealed, signing_key.get_secret_value())
@@ -138,33 +197,63 @@ def register(
         if len(draft_id) > MAX_DRAFT_ID_LENGTH:
             raise ToolError("These Food names are too long for one Draft. Split it into several Drafts.")
 
+        daily_targets = user.daily_targets.as_nutrition()
+        added = draft_totals([], prepared, daily_targets).added
+        day_after = None
+
+        if additions is not None:
+            day_entries = entries_after(diary_days[day], changes)
+            day_after = DayAfter.of(draft_totals(day_entries, prepared, daily_targets))
+
         proposed_entries = [ProposedEntry.of(item) for item in prepared]
+        proposed_changes = [ProposedChange.of(change) for change in changes]
         result = FoodDraft(
             draft_id=draft_id,
             expires_at=sealed.expires_at,
-            meal=selected_meal,
-            meal_suggested=meal is None,
-            diary_day=day,
+            meal=additions.meal if additions is not None else None,
+            meal_suggested=meal_suggested,
+            diary_day=additions.diary_day if additions is not None else None,
             previous_day_suggested=previous_day_suggested,
             items=proposed_entries,
-            totals=Amounts.of(totals.added),
-            day_after=DayAfter.of(totals),
+            changes=proposed_changes,
+            totals=Amounts.of(added),
+            day_after=day_after,
+            other_days_after=_other_days_after(changes, diary_days, additions, daily_targets),
+            removal_note=_removal_note(changes),
         )
 
         return as_tool_result(result)
 
 
-async def _source_days(items: DraftItems, diary: UserDiary, user_today: date) -> SourceDays:
-    """The entries of each Diary Day that Diary Entry items repeat from, each day read once.
+def _additions_and_changes(items: DraftItems) -> tuple[list[AdditionInput], list[EntryChangeDraftInput]]:
+    """The items that add Food Entries, and the ones that change or remove logged entries."""
+    additions: list[AdditionInput] = []
+    changes: list[EntryChangeDraftInput] = []
 
-    Every source day is checked before the first read, so a refused one costs no request.
+    for item in items:
+        if isinstance(item, EntryChangeDraftInput):
+            changes.append(item)
+        else:
+            additions.append(item)
+
+    return additions, changes
+
+
+async def _diary_days(items: DraftItems, diary: UserDiary, user_today: date) -> DiaryDays:
+    """The entries of each Diary Day that items repeat from or change, each day read once.
+
+    Every such day is checked before the first read, so a refused one costs no request.
     """
     repeated_days = [item.diary_day for item in items if isinstance(item, DiaryEntryDraftInput)]
-    days = list(dict.fromkeys(repeated_days))
-    entries: SourceDays = {}
+    changed = [item.diary_day for item in items if isinstance(item, EntryChangeDraftInput)]
+    days = list(dict.fromkeys(repeated_days + changed))
+    entries: DiaryDays = {}
 
-    for day in days:
+    for day in repeated_days:
         check_source_day(day, user_today)
+
+    for day in changed:
+        check_changed_day(day, user_today)
 
     for day in days:
         entries[day] = await diary.entries(day)
@@ -172,17 +261,44 @@ async def _source_days(items: DraftItems, diary: UserDiary, user_today: date) ->
     return entries
 
 
+def _other_days_after(
+    changes: list[DraftChange],
+    diary_days: DiaryDays,
+    additions: Additions | None,
+    daily_targets: Nutrition,
+) -> list[OtherDayAfter]:
+    """Each Diary Day the changes are on, besides the new items' own day, once they're made."""
+    days_after: list[OtherDayAfter] = []
+
+    for day in changed_days(changes):
+        if additions is not None and day == additions.diary_day:
+            continue
+
+        entries = entries_after(diary_days[day], changes)
+        totals = draft_totals(entries, [], daily_targets)
+
+        days_after.append(OtherDayAfter.on(day, totals))
+
+    return days_after
+
+
+def _removal_note(changes: list[DraftChange]) -> str | None:
+    removals = [change for change in changes if isinstance(change.change, EntryRemoval)]
+
+    return REMOVAL_NOTE if removals else None
+
+
 async def _prepared_item(
-    item: DraftItemInput,
+    item: AdditionInput,
     fatsecret: FatSecretGateway,
     food_cache: FoodCache,
-    source_days: SourceDays,
+    diary_days: DiaryDays,
 ) -> DraftItem:
     if isinstance(item, NutritionLabelDraftInput):
         return await _stand_in(item, fatsecret, food_cache)
 
     if isinstance(item, DiaryEntryDraftInput):
-        return await _repeated(item, fatsecret, food_cache, source_days)
+        return await _repeated(item, fatsecret, food_cache, diary_days)
 
     name, serving = await _resolve_serving(item, fatsecret, food_cache)
 
@@ -193,14 +309,10 @@ async def _repeated(
     item: DiaryEntryDraftInput,
     fatsecret: FatSecretGateway,
     food_cache: FoodCache,
-    source_days: SourceDays,
+    diary_days: DiaryDays,
 ) -> DraftItem:
-    source = source_entry(source_days[item.diary_day], item.food_entry_id, item.diary_day)
-    source_amount = written_metric_amount(source)
-
-    # Only an amount not written in grams or ml costs a lookup of its Serving's weight.
-    if source_amount is None:
-        source_amount = await _looked_up_metric_amount(source, fatsecret, food_cache)
+    source = entry_on_day(diary_days[item.diary_day], item.food_entry_id, item.diary_day)
+    source_amount = await _metric_amount(source, fatsecret, food_cache)
 
     return repeated_item(
         source=source,
@@ -208,6 +320,45 @@ async def _repeated(
         eaten_amount=item.metric_amount,
         assumption=item.assumption,
     )
+
+
+async def _prepared_change(
+    item: EntryChangeDraftInput,
+    fatsecret: FatSecretGateway,
+    food_cache: FoodCache,
+    diary_days: DiaryDays,
+) -> DraftChange:
+    entry = entry_on_day(diary_days[item.diary_day], item.food_entry_id, item.diary_day)
+
+    if item.change == "remove":
+        return proposed_removal(entry)
+
+    # Only a new amount needs the entry's weight.
+    entry_amount = None
+
+    if item.metric_amount is not None:
+        entry_amount = await _metric_amount(entry, fatsecret, food_cache)
+
+    return proposed_edit(
+        entry,
+        entry_amount,
+        metric_amount=item.metric_amount,
+        meal=item.meal,
+        name=item.food_entry_name,
+    )
+
+
+async def _metric_amount(
+    entry: FoodEntry, fatsecret: FatSecretGateway, food_cache: FoodCache
+) -> MetricAmount | None:
+    """The entry's amount in grams or ml; None when its weight is unknown."""
+    written = written_metric_amount(entry)
+
+    # Only an amount not written in grams or ml costs a lookup of its Serving's weight.
+    if written is not None:
+        return written
+
+    return await _looked_up_metric_amount(entry, fatsecret, food_cache)
 
 
 async def _looked_up_metric_amount(

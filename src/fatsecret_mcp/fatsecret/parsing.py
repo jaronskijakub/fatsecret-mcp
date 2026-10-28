@@ -48,6 +48,12 @@ def created_food_entry_id(body: dict[str, Any]) -> str:
     return _text(_object(body, "food_entry_id"), "value")
 
 
+def check_success(body: dict[str, Any]) -> None:
+    """Accept a `food_entry.edit` or `food_entry.delete` response: `{"success": {"value": "1"}}`."""
+    if _text(_object(body, "success"), "value") != "1":
+        raise UpstreamFailure("a change FatSecret didn't confirm")
+
+
 def token_and_secret(text: str) -> tuple[str, str]:
     """The token and secret in a PIN flow response, form-encoded: `oauth_token=…&oauth_token_secret=…`."""
     fields = parse_qs(text, strict_parsing=False)

@@ -5,14 +5,16 @@ Every call is counted and, like a network call, gives way to other calls while i
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import date
 from itertools import count
 from urllib.parse import parse_qs, quote, urlsplit
 
 import anyio.lowlevel
 
-from fatsecret_mcp.domain.models import CatalogFood, DraftEntry, Food, FoodEntry, Meal, Nutrition
+from fatsecret_mcp.domain.models import CatalogFood, DraftEntry, EntryEdit, Food, FoodEntry, Meal, Nutrition
 from fatsecret_mcp.fatsecret.errors import (
     CredentialsRejected,
     FatSecretError,
@@ -22,6 +24,9 @@ from fatsecret_mcp.fatsecret.errors import (
     from_code,
 )
 from fatsecret_mcp.fatsecret.gateway import AccessToken, RequestToken
+
+# An amount FatSecret writes as a number before its unit or Serving: "150 g", "2 servings".
+LEADING_NUMBER = re.compile(r"(?P<number>\d+(?:\.\d+)?) (?P<rest>.+)")
 
 
 class FakeFatSecret:
@@ -186,6 +191,34 @@ class FakeFatSecret:
 
         return created.id
 
+    async def edit_food_entry(self, user: AccessToken, edit: EntryEdit) -> None:
+        await self._request()
+        self._authenticate(user)
+
+        entries = self._diaries[user.token]
+        index = _index_of(entries, edit.food_entry_id)
+        entry = entries[index]
+        units = edit.number_of_units if edit.number_of_units is not None else entry.number_of_units
+        ratio = units / entry.number_of_units
+
+        entries[index] = replace(
+            entry,
+            name=edit.entry_name if edit.entry_name is not None else entry.name,
+            meal=edit.meal if edit.meal is not None else entry.meal,
+            number_of_units=units,
+            amount=_scaled_amount(entry.amount, ratio),
+            nutrition=_scaled(entry.nutrition, ratio),
+        )
+
+    async def delete_food_entry(self, user: AccessToken, food_entry_id: str) -> None:
+        await self._request()
+        self._authenticate(user)
+
+        # Like FatSecret, removing an entry that's already gone still succeeds.
+        remaining = [entry for entry in self._diaries[user.token] if entry.id != food_entry_id]
+
+        self._diaries[user.token] = remaining
+
     def _nutrition_per_unit(self, user: AccessToken, food_id: str, serving_id: str) -> Nutrition:
         """Like FatSecret, the Fake knows a Food from its catalog or from the User's own Food Entries."""
         food = self._catalog.get(food_id)
@@ -232,6 +265,26 @@ def _scaled(nutrition: Nutrition, factor: float) -> Nutrition:
         fat=nutrition.fat * factor,
         carbohydrate=nutrition.carbohydrate * factor,
     )
+
+
+def _index_of(entries: list[FoodEntry], food_entry_id: str) -> int:
+    for index, entry in enumerate(entries):
+        if entry.id == food_entry_id:
+            return index
+
+    raise NotFound()
+
+
+def _scaled_amount(amount: str, ratio: float) -> str:
+    """The amount for `ratio` times the units, as FatSecret rewrites it: "150 g" to "120 g"."""
+    match = LEADING_NUMBER.fullmatch(amount)
+
+    if match is None or ratio == 1:
+        return amount
+
+    number = float(match["number"]) * ratio
+
+    return f"{number:g} {match['rest']}"
 
 
 _ids = count(1)

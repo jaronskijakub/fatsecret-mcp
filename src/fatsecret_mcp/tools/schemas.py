@@ -12,14 +12,18 @@ from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
 from mcp_types import CallToolResult, TextContent
-from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag
+from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, model_validator
 
 from fatsecret_mcp.domain.models import (
     Confirmation,
+    ConfirmedChange,
     ConfirmedEntry,
     DaySummary,
+    DraftChange,
     DraftItem,
     DraftTotals,
+    EntryChange,
+    EntryRemoval,
     Food,
     FoodEntry,
     Meal,
@@ -154,14 +158,58 @@ class DiaryEntryDraftInput(BaseModel):
     assumption: Assumption = None
 
 
+ChangeKind = Literal["edit", "remove"]
+
+
+class EntryChangeDraftInput(BaseModel):
+    """A change to a Food Entry in the Food Diary: its removal, or a new amount, Meal or name."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    change: ChangeKind = Field(
+        description="remove takes the entry out of the Food Diary; edit changes the values given."
+    )
+    diary_day: date = Field(description="The Diary Day get_diary_day showed it on, as YYYY-MM-DD.")
+    food_entry_id: CatalogId = Field(description="The food_entry_id get_diary_day or confirm_draft showed.")
+    metric_amount: float | None = Field(
+        default=None,
+        gt=0,
+        le=10000,
+        allow_inf_nan=False,
+        description="The new amount in grams, or ml for an entry measured in ml.",
+    )
+    meal: Meal | None = Field(default=None, description="The Meal to move the entry to, on its Diary Day.")
+    food_entry_name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_NAME_LENGTH,
+        description="A new name for the entry.",
+    )
+
+    @model_validator(mode="after")
+    def _check_values(self) -> EntryChangeDraftInput:
+        values = [self.metric_amount, self.meal, self.food_entry_name]
+        given = [value for value in values if value is not None]
+
+        if self.change == "remove" and given:
+            raise ValueError("A removal takes no metric_amount, meal or food_entry_name.")
+        if self.change == "edit" and not given:
+            raise ValueError("An edit needs a new metric_amount, meal or food_entry_name.")
+
+        return self
+
+
 # Fields only a Nutrition Label item has, so one missing its label is still told what it lacks.
 NUTRITION_LABEL_ITEM_FIELDS = {"product_name", "nutrition_label", "grams", "search_phrase"}
 
 
 def _draft_item_kind(item: Any) -> str:
-    """Tells the three kinds of item apart by the fields only a Nutrition Label or Diary Entry item has."""
+    """Tells the four kinds of item apart by the fields only one kind of item has."""
     if isinstance(item, NutritionLabelDraftInput):
         return "nutrition_label"
+
+    if isinstance(item, EntryChangeDraftInput):
+        return "entry_change"
 
     if isinstance(item, DiaryEntryDraftInput):
         return "diary_entry"
@@ -172,6 +220,9 @@ def _draft_item_kind(item: Any) -> str:
         if any(present):
             return "nutrition_label"
 
+        if "change" in item:
+            return "entry_change"
+
         if "food_entry_id" in item:
             return "diary_entry"
 
@@ -181,7 +232,8 @@ def _draft_item_kind(item: Any) -> str:
 DraftItemInput = Annotated[
     Annotated[FoodDraftInput, Tag("food")]
     | Annotated[NutritionLabelDraftInput, Tag("nutrition_label")]
-    | Annotated[DiaryEntryDraftInput, Tag("diary_entry")],
+    | Annotated[DiaryEntryDraftInput, Tag("diary_entry")]
+    | Annotated[EntryChangeDraftInput, Tag("entry_change")],
     Discriminator(_draft_item_kind),
 ]
 
@@ -226,7 +278,9 @@ class Amounts(BaseModel):
 
 
 class DiaryEntry(BaseModel):
-    food_entry_id: str = Field(description="Pass it to draft_entries to log this Food Entry again.")
+    food_entry_id: str = Field(
+        description="Pass it to draft_entries to log this Food Entry again, change or remove it."
+    )
     name: str
     amount: str = Field(description='The amount in its Serving, e.g. "150 g" or "2 servings".')
     kcal: int
@@ -428,6 +482,50 @@ class ProposedEntry(BaseModel):
         )
 
 
+class EntryValues(BaseModel):
+    name: str
+    amount: str
+    meal: Meal
+    kcal: int
+    protein: float
+    fat: float
+    carbohydrate: float
+
+    @classmethod
+    def of(cls, entry: FoodEntry) -> EntryValues:
+        amounts = Amounts.of(entry.nutrition)
+
+        return cls(
+            name=entry.name,
+            amount=entry.amount,
+            meal=entry.meal,
+            kcal=amounts.kcal,
+            protein=amounts.protein,
+            fat=amounts.fat,
+            carbohydrate=amounts.carbohydrate,
+        )
+
+
+class ProposedChange(BaseModel):
+    food_entry_id: str
+    diary_day: date
+    change: ChangeKind
+    before: EntryValues
+    after: EntryValues | None = Field(description="The entry once changed; null when it's removed.")
+
+    @classmethod
+    def of(cls, change: DraftChange) -> ProposedChange:
+        after = EntryValues.of(change.after) if change.after is not None else None
+
+        return cls(
+            food_entry_id=change.before.id,
+            diary_day=change.before.diary_day,
+            change=_change_kind(change.change),
+            before=EntryValues.of(change.before),
+            after=after,
+        )
+
+
 class DayAfter(BaseModel):
     consumed: Amounts
     daily_targets: Amounts
@@ -442,16 +540,38 @@ class DayAfter(BaseModel):
         )
 
 
+class OtherDayAfter(DayAfter):
+    diary_day: date
+
+    @classmethod
+    def on(cls, diary_day: date, totals: DraftTotals) -> OtherDayAfter:
+        return cls(
+            diary_day=diary_day,
+            consumed=Amounts.of(totals.consumed),
+            daily_targets=Amounts.of(totals.daily_targets),
+            remaining=Amounts.of(totals.remaining),
+        )
+
+
 class FoodDraft(BaseModel):
     draft_id: str
     expires_at: datetime
-    meal: Meal
+    meal: Meal | None = Field(description="The Meal of the new items; null when the Draft only has changes.")
     meal_suggested: bool
-    diary_day: date
+    diary_day: date | None = Field(
+        description="The Diary Day of the new items; null when the Draft only has changes."
+    )
     previous_day_suggested: bool
-    items: list[ProposedEntry]
-    totals: Amounts
-    day_after: DayAfter
+    items: list[ProposedEntry] = Field(description="New Food Entries.")
+    changes: list[ProposedChange] = Field(description="Changes to Food Entries, each before and after.")
+    totals: Amounts = Field(description="The new items added up.")
+    day_after: DayAfter | None = Field(
+        description="The new items' Diary Day after the whole Draft; null when the Draft only has changes."
+    )
+    other_days_after: list[OtherDayAfter] = Field(
+        description="Each other Diary Day the changes are on, after the whole Draft."
+    )
+    removal_note: str | None = Field(description="Set when the Draft removes a Food Entry; tell the User.")
     attribution: str = ATTRIBUTION
 
 
@@ -469,29 +589,53 @@ class ConfirmedFoodEntry(BaseModel):
         )
 
 
+class ConfirmedFoodEntryChange(BaseModel):
+    food_entry_id: str
+    diary_day: date
+    change: ChangeKind
+    written: bool = Field(description="False when writing stopped before this change.")
+
+    @classmethod
+    def of(cls, confirmed: ConfirmedChange) -> ConfirmedFoodEntryChange:
+        return cls(
+            food_entry_id=confirmed.change.food_entry_id,
+            diary_day=confirmed.change.diary_day,
+            change=_change_kind(confirmed.change),
+            written=confirmed.written,
+        )
+
+
 class DraftConfirmation(BaseModel):
     status: Literal["confirmed", "partially_written", "already_confirmed"] = Field(
         description=(
-            "partially_written: writing stopped at an item without a food_entry_id. "
-            "already_confirmed: an earlier call wrote these entries; nothing new was written."
+            "partially_written: writing stopped at an item without a food_entry_id or a change not "
+            "written. already_confirmed: an earlier call wrote this Draft; nothing new was written."
         )
     )
-    meal: Meal
-    diary_day: date
-    entries: list[ConfirmedFoodEntry]
+    meal: Meal | None = Field(
+        description="The Meal of the new entries; null when the Draft only has changes."
+    )
+    diary_day: date | None = Field(
+        description="The Diary Day of the new entries; null when the Draft only has changes."
+    )
+    entries: list[ConfirmedFoodEntry] = Field(description="New Food Entries, written first.")
+    changes: list[ConfirmedFoodEntryChange] = Field(description="Changes, written after the new entries.")
     failure: str | None = Field(description="Why writing stopped part-way through.")
     attribution: str = ATTRIBUTION
 
     @classmethod
     def of(cls, confirmation: Confirmation, *, repeated: bool) -> DraftConfirmation:
         entries = [ConfirmedFoodEntry.of(confirmed) for confirmed in confirmation.entries]
+        changes = [ConfirmedFoodEntryChange.of(confirmed) for confirmed in confirmation.changes]
         status = _confirmation_status(confirmation, repeated=repeated)
+        additions = confirmation.draft.additions
 
         return cls(
             status=status,
-            meal=confirmation.draft.meal,
-            diary_day=confirmation.draft.diary_day,
+            meal=additions.meal if additions is not None else None,
+            diary_day=additions.diary_day if additions is not None else None,
             entries=entries,
+            changes=changes,
             failure=confirmation.failure,
         )
 
@@ -522,6 +666,10 @@ def _repeated_from_details(item: DraftItem) -> RepeatedFromDetails | None:
         return None
 
     return RepeatedFromDetails.of(item.repeated_from)
+
+
+def _change_kind(change: EntryChange) -> ChangeKind:
+    return "remove" if isinstance(change, EntryRemoval) else "edit"
 
 
 def _confirmation_status(

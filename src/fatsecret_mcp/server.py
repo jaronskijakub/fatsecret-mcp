@@ -51,12 +51,17 @@ the catalog. List its Food Entries with their amounts and ask whether everything
 what to leave out or eat more or less of. Then draft the chosen entries as Diary Entry items by \
 food_entry_id. They keep their names, so a product logged in the FatSecret app or as a Stand-in is \
 repeated without its Nutrition Label.
+- To change or remove logged Food Entries, draft change items by food_entry_id. For "undo that" \
+after a confirm, remove the food_entry_ids confirm_draft returned; undoing a change is a change \
+back. For any other change, read the Diary Day first, name the entries to change and ask when it's \
+unclear which one is meant. A different Food or Diary Day is a removal plus a new item in the same \
+Draft. A removed entry can't be restored, only logged again.
 - draft_entries proposes Food Entries, assumptions, a Meal and Diary Day, plus the day after adding \
-against Daily Targets. Show the Draft and ask about a suggested Meal. When previous_day_suggested \
-is true, ask about Snacks on the previous Diary Day. Corrections need a new Draft. This tool does \
-not write to the Food Diary.
-- confirm_draft writes a Draft's Food Entries to the Food Diary. Call it only after the User \
-explicitly approved that Draft in their latest message.
+against Daily Targets, and changes before and after. Show the Draft and ask about a suggested \
+Meal. When previous_day_suggested is true, ask about Snacks on the previous Diary Day. Corrections \
+need a new Draft. This tool does not write to the Food Diary.
+- confirm_draft writes a Draft to the Food Diary: new entries first, then changes. Call it only \
+after the User explicitly approved that Draft in their latest message.
 - Macros are protein, fat and carbohydrate, in grams.
 - Report the numbers neutrally and in the User's language. This server gives no diet, nutrition or \
 health advice.

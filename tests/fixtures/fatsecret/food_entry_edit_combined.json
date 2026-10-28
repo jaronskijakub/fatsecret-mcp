@@ -1,0 +1,26 @@
+{
+  "description": "food_entry.edit with a new name, amount and Meal at once.",
+  "source": "recorded",
+  "recorded_on": "2026-10-28",
+  "request": {
+    "http_method": "POST",
+    "url": "https://platform.fatsecret.com/rest/server.api",
+    "params": {
+      "method": "food_entry.edit",
+      "format": "json",
+      "food_entry_id": "9000001",
+      "food_entry_name": "Chicken Breast",
+      "number_of_units": "120",
+      "meal": "lunch"
+    }
+  },
+  "response": {
+    "status": 200,
+    "content_type": "application/json; charset=utf-8",
+    "json": {
+      "success": {
+        "value": "1"
+      }
+    }
+  }
+}

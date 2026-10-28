@@ -26,9 +26,9 @@ Today is always read fresh. Past days are kept in memory until the server stops 
 
 ## Drafts
 
-Drafts expire after thirty minutes. Confirming one writes each item as a food entry under the draft's name, meal and day. A draft can be confirmed only by the person it was made for. Confirming it again writes nothing and returns the earlier result, until the draft expires or the server restarts. If FatSecret fails part-way through, the result lists which entries were saved; draft the rest again.
+Drafts expire after thirty minutes. Confirming one writes each new item as a food entry under the draft's name, meal and day, then makes its changes and removals. A draft can be confirmed only by the person it was made for. Confirming it again writes nothing and returns the earlier result, until the draft expires or the server restarts. If FatSecret fails part-way through, the result lists which entries were saved and which changes were made; draft the rest again.
 
-A draft's day can be at most a year back or a week ahead.
+A draft's day can be at most a year back or a week ahead. An entry can be changed or removed from today back to a year ago, and a removed entry can't be restored.
 
 ## Input sizes
 
@@ -39,5 +39,5 @@ A draft's day can be at most a year back or a week ahead.
 | Items in one draft | 20; Claude splits a larger meal into several drafts |
 | Amount per item | positive and finite, at most 10,000 units, 10,000 g or ml where weight or volume is known, and 20,000 kcal |
 | Search text | 200 characters |
-| Product name, search phrase | 100 characters |
+| Product name, search phrase, new entry name | 100 characters |
 | Assumption | 300 characters |

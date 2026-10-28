@@ -7,13 +7,23 @@ That keeps the Fake honest: anything the tools rely on has to hold for real FatS
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from datetime import date
 from typing import Protocol
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from fatsecret_mcp.domain.models import CatalogFood, DraftEntry, Food, FoodEntry, Meal, Nutrition, Serving
+from fatsecret_mcp.domain.models import (
+    CatalogFood,
+    DraftEntry,
+    EntryEdit,
+    Food,
+    FoodEntry,
+    Meal,
+    Nutrition,
+    Serving,
+)
 from fatsecret_mcp.fatsecret.client import FatSecretApi
 from fatsecret_mcp.fatsecret.errors import DailyQuotaExceeded, InvalidAccessToken, NotFound, PinRejected
 from fatsecret_mcp.fatsecret.gateway import FatSecretGateway, RequestToken
@@ -27,6 +37,8 @@ THREE_MEALS_DAY = date(2015, 1, 12)
 ONE_ENTRY_DAY = date(2015, 1, 13)
 EMPTY_DAY = date(2015, 1, 14)
 REVOKED_TOKEN_DAY = date(2026, 10, 13)
+# Two test Food Entries changed in place there, then removed.
+CHANGES_DAY = date(2015, 1, 21)
 
 RECORDED_ENTRIES = {
     THREE_MEALS_DAY: [
@@ -78,6 +90,80 @@ RECORDED_ENTRIES = {
         ),
     ],
     EMPTY_DAY: [],
+}
+
+# The test entries just before the last two recorded edits, and right after them.
+ENTRIES_BEFORE_EDITS = [
+    FoodEntry(
+        id="9000001",
+        food_id="1641",
+        serving_id="50321",
+        name="Grilled chicken breast",
+        amount="200 g",
+        number_of_units=200,
+        meal=Meal.BREAKFAST,
+        diary_day=CHANGES_DAY,
+        nutrition=Nutrition(kcal=390, protein=59.1, fat=15.4333, carbohydrate=0),
+    ),
+    FoodEntry(
+        id="9000002",
+        food_id="51467582",
+        serving_id="43596665",
+        name="Skyr Waniliowy",
+        amount="2 servings",
+        number_of_units=2,
+        meal=Meal.LUNCH,
+        diary_day=CHANGES_DAY,
+        nutrition=Nutrition(kcal=148, protein=12.8, fat=2.6, carbohydrate=18.4),
+    ),
+]
+ENTRIES_AFTER_EDITS = [
+    FoodEntry(
+        id="9000001",
+        food_id="1641",
+        serving_id="50321",
+        name="Chicken Breast",
+        amount="120 g",
+        number_of_units=120,
+        meal=Meal.LUNCH,
+        diary_day=CHANGES_DAY,
+        nutrition=Nutrition(kcal=234, protein=35.46, fat=9.26, carbohydrate=0),
+    ),
+    FoodEntry(
+        id="9000002",
+        food_id="51467582",
+        serving_id="43596665",
+        name="Skyr Waniliowy",
+        amount="3 servings",
+        number_of_units=3,
+        meal=Meal.LUNCH,
+        diary_day=CHANGES_DAY,
+        nutrition=Nutrition(kcal=222, protein=19.2, fat=3.9, carbohydrate=27.6),
+    ),
+]
+# Each recorded edit that changes one value, and the change that sends it.
+ONE_VALUE_EDITS = {
+    "food_entry_edit_units.json": EntryEdit(
+        food_entry_id="9000001",
+        diary_day=CHANGES_DAY,
+        number_of_units=200,
+        meal=None,
+        entry_name=None,
+    ),
+    "food_entry_edit_name.json": EntryEdit(
+        food_entry_id="9000001",
+        diary_day=CHANGES_DAY,
+        number_of_units=None,
+        meal=None,
+        entry_name="Grilled chicken breast",
+    ),
+    "food_entry_edit_meal.json": EntryEdit(
+        food_entry_id="9000001",
+        diary_day=CHANGES_DAY,
+        number_of_units=None,
+        meal=Meal.BREAKFAST,
+        entry_name=None,
+    ),
 }
 
 RECORDED_FIXTURES = {
@@ -184,6 +270,9 @@ class World(Protocol):
     def given_catalog(self) -> None: ...
     def given_quota_exceeded(self) -> None: ...
     def given_a_recorded_food_entry_create(self) -> None: ...
+    def given_entries_before_the_recorded_edits(self) -> None: ...
+    def given_a_recorded_edit(self, name: str) -> None: ...
+    def given_a_recorded_removal(self) -> None: ...
     def given_a_user_signing_in_with_a_pin(self) -> None: ...
     def given_a_pin_the_user_never_saw(self) -> None: ...
     def pin_shown_after_approving(self, request_token: RequestToken) -> str: ...
@@ -213,6 +302,16 @@ class FakeWorld:
     def given_a_recorded_food_entry_create(self) -> None:
         # FatSecret knows the Skyr from the User's Food Diary, though its catalog can't return it.
         self.given_recorded_diary_day(ONE_ENTRY_DAY)
+
+    def given_entries_before_the_recorded_edits(self) -> None:
+        for entry in ENTRIES_BEFORE_EDITS:
+            self.fake.add_food_entry(USER, entry)
+
+    def given_a_recorded_edit(self, name: str) -> None:
+        self.given_entries_before_the_recorded_edits()
+
+    def given_a_recorded_removal(self) -> None:
+        self.given_entries_before_the_recorded_edits()
 
     def given_recorded_month(self, scenario: str) -> None:
         if scenario != "empty":
@@ -262,6 +361,23 @@ class RecordedWorld:
 
     def given_a_recorded_food_entry_create(self) -> None:
         self.recorded.serve("food_entry_create.json")
+
+    def given_entries_before_the_recorded_edits(self) -> None:
+        for name in (
+            "food_entry_edit_combined.json",
+            "food_entry_edit_brand_units.json",
+            "food_entries_get_after_edits.json",
+        ):
+            self.recorded.serve(name)
+
+    def given_a_recorded_edit(self, name: str) -> None:
+        self.recorded.serve(name)
+
+    def given_a_recorded_removal(self) -> None:
+        self.recorded.serve("food_entry_delete.json")
+        # Same request and answer as the first removal: FatSecret answers success again.
+        self.recorded.serve("food_entry_delete_deleted.json")
+        self.recorded.serve("error_food_entry_edit_deleted.json")
 
     def given_recorded_month(self, scenario: str) -> None:
         suffix = "" if scenario == "full" else f"_{scenario}"
@@ -405,6 +521,80 @@ async def test_creating_a_food_entry_rejects_a_revoked_access_token(world: World
 
     with pytest.raises(InvalidAccessToken):
         await world.gateway.create_food_entry(USER, SKYR_TWO_UNITS, Meal.LUNCH, THREE_MEALS_DAY)
+
+
+async def test_edits_change_a_food_entrys_amount_meal_and_name_in_place(world: World) -> None:
+    world.given_entries_before_the_recorded_edits()
+
+    chicken = EntryEdit(
+        food_entry_id="9000001",
+        diary_day=CHANGES_DAY,
+        number_of_units=120,
+        meal=Meal.LUNCH,
+        entry_name="Chicken Breast",
+    )
+    # A Brand Food's units change too, though FatSecret's docs say they're always 1.
+    skyr = EntryEdit(
+        food_entry_id="9000002",
+        diary_day=CHANGES_DAY,
+        number_of_units=3,
+        meal=None,
+        entry_name=None,
+    )
+
+    await world.gateway.edit_food_entry(USER, chicken)
+    await world.gateway.edit_food_entry(USER, skyr)
+
+    entries = await world.gateway.list_food_entries(USER, CHANGES_DAY)
+
+    read = [_without_nutrition(entry) for entry in entries]
+    expected_entries = [_without_nutrition(entry) for entry in ENTRIES_AFTER_EDITS]
+
+    assert read == expected_entries
+    for entry, expected in zip(entries, ENTRIES_AFTER_EDITS, strict=True):
+        assert entry.nutrition.kcal == pytest.approx(expected.nutrition.kcal)
+        assert entry.nutrition.protein == pytest.approx(expected.nutrition.protein)
+        assert entry.nutrition.fat == pytest.approx(expected.nutrition.fat, abs=0.01)
+
+
+@pytest.mark.parametrize("recorded", list(ONE_VALUE_EDITS))
+async def test_an_edit_sends_only_the_value_it_changes(world: World, recorded: str) -> None:
+    world.given_a_recorded_edit(recorded)
+
+    await world.gateway.edit_food_entry(USER, ONE_VALUE_EDITS[recorded])
+
+
+async def test_a_removed_food_entry_can_be_removed_again_but_not_edited(world: World) -> None:
+    world.given_a_recorded_removal()
+
+    edit = EntryEdit(
+        food_entry_id="9000001",
+        diary_day=CHANGES_DAY,
+        number_of_units=100,
+        meal=None,
+        entry_name=None,
+    )
+
+    await world.gateway.delete_food_entry(USER, "9000001")
+    await world.gateway.delete_food_entry(USER, "9000001")
+
+    with pytest.raises(NotFound):
+        await world.gateway.edit_food_entry(USER, edit)
+
+
+async def test_changing_a_food_entry_rejects_a_revoked_access_token(world: World) -> None:
+    world.given_revoked_access_token()
+
+    edit = ONE_VALUE_EDITS["food_entry_edit_units.json"]
+
+    with pytest.raises(InvalidAccessToken):
+        await world.gateway.edit_food_entry(USER, edit)
+    with pytest.raises(InvalidAccessToken):
+        await world.gateway.delete_food_entry(USER, "9000001")
+
+
+def _without_nutrition(entry: FoodEntry) -> FoodEntry:
+    return replace(entry, nutrition=Nutrition())
 
 
 async def test_the_pin_flow_gives_an_access_token_to_the_users_own_food_diary(world: World) -> None:
