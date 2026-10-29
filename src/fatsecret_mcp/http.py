@@ -37,6 +37,15 @@ from fatsecret_mcp.domain.diary_day import Clock, system_clock
 from fatsecret_mcp.fatsecret.budget import daily_budget
 from fatsecret_mcp.fatsecret.food_cache import FoodCache
 from fatsecret_mcp.fatsecret.gateway import FatSecretGateway
+from fatsecret_mcp.icons.links import PUBLIC_FILES, server_icons
+from fatsecret_mcp.icons.marks import read_file
+
+# The apps fetch icons from other origins and without credentials; the files never change in a release.
+_PUBLIC_FILE_HEADERS = {
+    "Cache-Control": "public, max-age=86400",
+    "Cross-Origin-Resource-Policy": "cross-origin",
+    "X-Content-Type-Options": "nosniff",
+}
 
 # HTTP client debug logs can contain the authorization query or a token response.
 logging.getLogger("httpx2").setLevel(logging.WARNING)
@@ -97,6 +106,13 @@ def build_http_app(
     )
 
     routes.extend([authorization_metadata, health, authorize, token, tools])
+
+    for name in PUBLIC_FILES:
+        public_file = Route(
+            path="/" + name,
+            endpoint=_public_file,
+        )
+        routes.append(public_file)
 
     @asynccontextmanager
     async def lifespan(_app: Starlette) -> AsyncGenerator[None]:
@@ -196,6 +212,7 @@ class _UserServers:
             signing_key=self.household.signing_key,
             daily_requests=daily_budget(len(self.household.users)),
             food_cache=self.food_cache,
+            icons=server_icons(self.auth.identity.base_url),
         )
         security = TransportSecuritySettings(
             allowed_hosts=[urlsplit(self.auth.identity.base_url).netloc],
@@ -254,3 +271,14 @@ def _access_token(raw_token: str, claims: AccessClaims) -> AccessToken:
 
 async def _health(request: Request) -> Response:
     return JSONResponse({"status": "ok"})
+
+
+async def _public_file(request: Request) -> Response:
+    """The connector's icon or favicon, for anyone: the apps fetch it without signing in."""
+    name = request.url.path.removeprefix("/")
+
+    return Response(
+        content=read_file(name),
+        media_type=PUBLIC_FILES[name],
+        headers=_PUBLIC_FILE_HEADERS,
+    )

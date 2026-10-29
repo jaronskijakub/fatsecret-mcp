@@ -39,6 +39,7 @@ SERVER = json.loads((REPOSITORY / "server.json").read_text())
 README = (REPOSITORY / "README.md").read_text()
 CHANGELOG = (REPOSITORY / "CHANGELOG.md").read_text()
 BUILT_DIST = os.environ.get("FATSECRET_PACKAGE_DIST")
+ICON_FILES = "src/fatsecret_mcp/icons/files/"
 
 
 @pytest.fixture(scope="module")
@@ -67,7 +68,7 @@ def dist(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def test_the_wheel_holds_only_the_package_and_its_metadata(dist: Path) -> None:
     names = ["METADATA", "WHEEL", "RECORD", "entry_points.txt", "licenses/LICENSE"]
     metadata = [f"{DIST_INFO}/{name}" for name in names]
-    expected = [*_modules(), *metadata]
+    expected = [*_package_files(), *metadata]
     entries = _wheel_entries(dist)
     files = _files(entries)
 
@@ -76,7 +77,7 @@ def test_the_wheel_holds_only_the_package_and_its_metadata(dist: Path) -> None:
 
 
 def test_the_sdist_holds_only_the_package_and_its_metadata(dist: Path) -> None:
-    sources = [f"src/{module}" for module in _modules()]
+    sources = [f"src/{module}" for module in _package_files()]
     names = ["PKG-INFO", "pyproject.toml", "README.md", "LICENSE", *sources]
     expected = [f"fatsecret_mcp-{VERSION}/{name}" for name in names]
     entries = _sdist_entries(dist)
@@ -156,11 +157,15 @@ def _checkout_files() -> list[str]:
     return [name for name in names if (REPOSITORY / name).is_file()]
 
 
-def _modules() -> list[str]:
-    """The package's Python files, relative to `src/`."""
-    names = [name for name in _checkout_files() if name.startswith("src/") and name.endswith(".py")]
+def _package_files() -> list[str]:
+    """The package's Python files and the connector's icon files, relative to `src/`."""
+    names = [name for name in _checkout_files() if _is_package_file(name)]
 
     return [name.removeprefix("src/") for name in names]
+
+
+def _is_package_file(name: str) -> bool:
+    return name.startswith("src/") and (name.endswith(".py") or name.startswith(ICON_FILES))
 
 
 def _only(dist: Path, pattern: str) -> Path:

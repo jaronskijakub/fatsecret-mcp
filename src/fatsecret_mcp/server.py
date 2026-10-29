@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from importlib.metadata import version
 
 from mcp.server import MCPServer
+from mcp.types import Icon
 from pydantic import SecretStr
 
 from fatsecret_mcp.config.models import User
@@ -15,6 +16,7 @@ from fatsecret_mcp.fatsecret.budget import BudgetedGateway, DailyBudget
 from fatsecret_mcp.fatsecret.diary import UserDiary
 from fatsecret_mcp.fatsecret.food_cache import FoodCache
 from fatsecret_mcp.fatsecret.gateway import FatSecretGateway
+from fatsecret_mcp.icons.links import WEBSITE_URL
 from fatsecret_mcp.tools import (
     confirm_draft,
     draft_entries,
@@ -80,11 +82,13 @@ def build_server(
     signing_key: SecretStr,
     daily_requests: int,
     food_cache: FoodCache,
+    icons: list[Icon] | None = None,
 ) -> MCPServer:
     """The MCP server acting as `user`: it reads their diary and writes the Drafts they confirm.
 
     Every FatSecret request it makes counts towards the User's `daily_requests`. Foods come from
-    `food_cache`, which the server's owner shares between Users and keeps running.
+    `food_cache`, which the server's owner shares between Users and keeps running. `icons` need the
+    server's public URL, so only the remote connector has them.
     """
     budget = DailyBudget(
         requests=daily_requests,
@@ -113,6 +117,8 @@ def build_server(
         description=DESCRIPTION,
         instructions=INSTRUCTIONS,
         version=version("fatsecret-mcp"),
+        website_url=WEBSITE_URL,
+        icons=icons,
         lifespan=lifespan,
     )
 

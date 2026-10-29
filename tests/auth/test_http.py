@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import logging
 import re
@@ -25,6 +26,8 @@ from fatsecret_mcp.config.models import Household, User
 from fatsecret_mcp.domain.models import Food, Meal, Nutrition, Serving
 from fatsecret_mcp.fatsecret import food_cache as food_cache_module
 from fatsecret_mcp.http import build_http_app
+from fatsecret_mcp.icons.links import PUBLIC_FILES, WEBSITE_URL
+from fatsecret_mcp.icons.marks import mark_svg, read_file
 from tests.conftest import FakeClock
 from tests.fatsecret.fake import FakeFatSecret, food_entry
 from tests.test_server import wait_until_collected
@@ -420,6 +423,34 @@ async def test_health_is_public_but_mcp_requires_a_bearer_token(http: httpx2.Asy
     )
 
 
+async def test_the_icons_are_public_and_cacheable(http: httpx2.AsyncClient) -> None:
+    for name, media_type in PUBLIC_FILES.items():
+        response = await http.get("/" + name)
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == media_type
+        assert response.headers["cache-control"] == "public, max-age=86400"
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.content == read_file(name)
+
+
+async def test_the_connector_names_its_icons_on_its_own_origin_and_its_website(
+    http: httpx2.AsyncClient,
+) -> None:
+    token = await exchange(http, await authorize(http))
+    response = await diary(http, token.json()["access_token"])
+    info = response.json()["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]
+    sources = [icon["src"] for icon in info["icons"]]
+
+    assert info["websiteUrl"] == WEBSITE_URL
+    assert sources == [BASE_URL + "/fs-512.png", BASE_URL + "/fs-64.png"]
+
+    for source in sources:
+        icon = await http.get(source)
+
+        assert icon.status_code == 200
+
+
 async def test_http_startup_requires_passwords_for_every_user(
     household: Household, fatsecret: FakeFatSecret
 ) -> None:
@@ -800,6 +831,31 @@ async def test_the_sign_in_page_names_the_host_that_receives_the_code(
     assert response.status_code == 200
     assert "your browser returns to <strong>claude.ai</strong>" in visible_page(response)
     assert metadata_requests == [CLIENT_ID]
+
+
+async def test_the_sign_in_page_is_styled_only_by_its_own_stylesheet(http: httpx2.AsyncClient) -> None:
+    response = await open_authorize(http)
+    page = response.text
+    policy = response.headers["content-security-policy"]
+    stylesheets = re.findall(r"<style>(.*?)</style>", page, flags=re.DOTALL)
+
+    assert len(stylesheets) == 1
+
+    digest = hashlib.sha256(stylesheets[0].encode()).digest()
+    allowed_stylesheet = f"style-src 'sha256-{base64.b64encode(digest).decode()}'"
+
+    assert allowed_stylesheet in policy
+    assert policy.startswith("default-src 'none';")
+    assert "<script" not in page
+    assert " style=" not in page
+
+
+async def test_the_sign_in_page_shows_the_connector_mark_and_its_author(http: httpx2.AsyncClient) -> None:
+    page = visible_page(await open_authorize(http))
+
+    assert mark_svg("fs.svg") in page
+    assert mark_svg("jj.svg") in page
+    assert f'<a href="{WEBSITE_URL}"' in page
 
 
 async def test_claudes_metadata_is_fetched_once_an_hour(

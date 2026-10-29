@@ -27,6 +27,13 @@ An unknown name or an empty list stops the server at startup. Existing Claude co
 
 Each app gets its own tokens, so someone can use both at once. Signing a person out, as described below, ends their sessions in both.
 
+## The connector's icon
+
+The server names its icon and website in the details every app reads when it connects: two PNG icons served from the server's own address (`/fs-512.png` and `/fs-64.png`, plus `/favicon.ico`), and the GitHub repository as its website. They're public and need no sign-in, as the MCP specification asks.
+
+- ChatGPT shows that icon. It keeps a connector's details once added, so after an upgrade that changes the icon, remove the connector and add it again.
+- Claude ignores icons from MCP servers for now and shows the favicon of the server's domain instead. On a host such as `*.up.railway.app` that's the host's own logo; a custom domain with its own favicon changes it.
+
 `GET /health` returns only `{"status":"ok"}`. An unauthenticated request to `/mcp` returns `401` and the address of the OAuth metadata.
 
 ## Only known connector apps can sign in
