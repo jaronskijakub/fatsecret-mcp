@@ -22,16 +22,16 @@ ChatGPT is off by default. The Operator turns it on with `FATSECRET_MCP_CLIENTS`
 An unknown name or an empty list stops the server at startup. Existing Claude connectors keep working when ChatGPT is turned on. Turning an app off and redeploying signs everyone out of it at once.
 
 1. Set `FATSECRET_MCP_CLIENTS=claude,chatgpt` and redeploy.
-2. In ChatGPT, turn on developer mode and add a custom connector with the URL `<origin>/mcp`, choosing OAuth. Leave any client ID and secret empty: ChatGPT uses its own published identity. Which plans offer this is listed in OpenAI's [developer mode](https://help.openai.com/en/articles/12584461) article.
+2. In ChatGPT, turn on developer mode and add a custom connector with the URL `<origin>/mcp`, choosing OAuth. Leave any client ID and secret empty: ChatGPT uses its own published identity. For the icon, upload `<origin>/fs-256.png` (see [The connector's icon](#the-connectors-icon)). Which plans offer this is listed in OpenAI's [developer mode](https://help.openai.com/en/articles/12584461) article.
 3. Sign in with the same user `id` and connector password as in Claude. The sign-in page names ChatGPT and `chatgpt.com`.
 
 Each app gets its own tokens, so someone can use both at once. Signing a person out, as described below, ends their sessions in both.
 
 ## The connector's icon
 
-The server names its icon and website in the details every app reads when it connects: two PNG icons served from the server's own address (`/fs-512.png` and `/fs-64.png`, plus `/favicon.ico`), and the GitHub repository as its website. They're public and need no sign-in, as the MCP specification asks.
+The server names its icon and website in the details an MCP app reads when it connects: PNG icons served from the server's own address (`/fs-512.png`, `/fs-256.png` and `/fs-64.png`, plus `/favicon.ico`), and the GitHub repository as its website. They're public and need no sign-in, as the MCP specification asks. Apps that follow the specification show them; the two below don't yet.
 
-- ChatGPT shows that icon. It keeps a connector's details once added, so after an upgrade that changes the icon, remove the connector and add it again.
+- ChatGPT, for a connector added in developer mode, shows only what its form was given: the name, the description and an uploaded icon (PNG, at most 10 KB). Download `<origin>/fs-256.png` and upload it there. The version (1.0.0) and the empty website on the connector's page are ChatGPT's own.
 - Claude ignores icons from MCP servers for now and shows the favicon of the server's domain instead. On a host such as `*.up.railway.app` that's the host's own logo; a custom domain with its own favicon changes it.
 
 `GET /health` returns only `{"status":"ok"}`. An unauthenticated request to `/mcp` returns `401` and the address of the OAuth metadata.

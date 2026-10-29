@@ -443,7 +443,7 @@ async def test_the_connector_names_its_icons_on_its_own_origin_and_its_website(
     sources = [icon["src"] for icon in info["icons"]]
 
     assert info["websiteUrl"] == WEBSITE_URL
-    assert sources == [BASE_URL + "/fs-512.png", BASE_URL + "/fs-64.png"]
+    assert sources == [BASE_URL + "/fs-512.png", BASE_URL + "/fs-256.png", BASE_URL + "/fs-64.png"]
 
     for source in sources:
         icon = await http.get(source)

@@ -27,7 +27,7 @@ def png_size(data: bytes) -> str:
 def test_each_icon_is_a_png_on_the_servers_own_origin_of_the_size_it_claims() -> None:
     icons = server_icons(BASE_URL)
 
-    assert len(icons) == 2
+    assert len(icons) == 3
 
     for icon in icons:
         name = icon.src.removeprefix(BASE_URL + "/")
@@ -38,6 +38,13 @@ def test_each_icon_is_a_png_on_the_servers_own_origin_of_the_size_it_claims() ->
         assert icon.mime_type == "image/png"
         assert data.startswith(PNG_SIGNATURE)
         assert icon.sizes == [png_size(data)]
+
+
+def test_the_icon_for_chatgpts_connector_form_fits_its_upload_limit() -> None:
+    data = read_file("fs-256.png")
+
+    assert png_size(data) == "256x256"
+    assert len(data) <= 10_000
 
 
 def test_the_favicon_is_served_as_an_icon() -> None:
