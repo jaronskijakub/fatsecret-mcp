@@ -1,6 +1,4 @@
-<img src="https://raw.githubusercontent.com/jaronskijakub/fatsecret-mcp/main/src/fatsecret_mcp/icons/files/fs-512.png" width="80" height="80" alt="fs.">
-
-# fatsecret-mcp
+# <img src="https://raw.githubusercontent.com/jaronskijakub/fatsecret-mcp/main/src/fatsecret_mcp/icons/files/fs-512.png" width="40" height="40" align="center" alt="fs."> fatsecret-mcp
 
 <!-- mcp-name: io.github.jaronskijakub/fatsecret-mcp -->
 
