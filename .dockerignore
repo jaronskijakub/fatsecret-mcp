@@ -4,3 +4,4 @@
 !README.md
 !LICENSE
 !src/fatsecret_mcp/**/*.py
+!src/fatsecret_mcp/icons/files/*

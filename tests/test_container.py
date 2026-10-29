@@ -12,6 +12,7 @@ from pathlib import Path
 import httpx2
 import pytest
 
+from fatsecret_mcp.icons.links import PUBLIC_FILES
 from tests.auth.test_http import PASSWORD_HASH
 
 IMAGE = os.environ.get("FATSECRET_CONTAINER_IMAGE")
@@ -132,6 +133,16 @@ def test_image_requires_sign_in_for_mcp(container: tuple[str, httpx2.Client]) ->
     assert BASE_URL + "/.well-known/oauth-protected-resource/mcp" in response.headers["www-authenticate"]
 
 
+def test_image_serves_the_connector_icons_without_sign_in(container: tuple[str, httpx2.Client]) -> None:
+    _, client = container
+
+    for name, media_type in PUBLIC_FILES.items():
+        response = client.get("/" + name)
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == media_type
+
+
 def test_image_runs_as_non_root_and_passes_its_health_check(container: tuple[str, httpx2.Client]) -> None:
     container_id, _ = container
     uid = docker("exec", container_id, "python", "-c", "import os; print(os.getuid())")
@@ -150,7 +161,7 @@ def test_image_runs_as_non_root_and_passes_its_health_check(container: tuple[str
     assert health == "healthy"
 
 
-def test_build_context_accepts_only_package_metadata_and_python_sources(tmp_path: Path) -> None:
+def test_build_context_accepts_only_package_metadata_python_sources_and_icons(tmp_path: Path) -> None:
     repository = Path(__file__).resolve().parents[1]
     context = tmp_path / "build"
     exported = tmp_path / "exported"
@@ -161,6 +172,7 @@ def test_build_context_accepts_only_package_metadata_and_python_sources(tmp_path
         "LICENSE",
         "src/fatsecret_mcp/__init__.py",
         "src/fatsecret_mcp/cli/main.py",
+        "src/fatsecret_mcp/icons/files/fs-512.png",
     }
     excluded = {
         "operator-notes.md",
