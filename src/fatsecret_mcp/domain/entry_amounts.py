@@ -8,12 +8,11 @@ from __future__ import annotations
 import math
 import re
 
-from fatsecret_mcp.domain.drafts import InvalidDraftItem
+from fatsecret_mcp.domain.drafts import METRIC_UNITS, UNIT_DECIMALS, InvalidDraftItem
 from fatsecret_mcp.domain.models import FoodEntry, MetricAmount, Nutrition, Serving
 
-METRIC_UNITS = ("g", "ml")
 WRITTEN_METRIC_AMOUNT = re.compile(rf"(?P<amount>\d+(?:\.\d+)?) ?(?P<unit>{'|'.join(METRIC_UNITS)})")
-UNIT_DECIMALS = 3
+BARE_NUMBER = re.compile(r"\d+(?:\.\d+)?")
 
 
 def written_metric_amount(entry: FoodEntry) -> MetricAmount | None:
@@ -32,6 +31,11 @@ def written_metric_amount(entry: FoodEntry) -> MetricAmount | None:
         amount=amount,
         unit=match["unit"],
     )
+
+
+def has_bare_number_amount(entry: FoodEntry) -> bool:
+    """True when FatSecret left the Serving's measure out of the amount: "1" for "1 roll (3-1/2" dia)"."""
+    return BARE_NUMBER.fullmatch(entry.amount) is not None
 
 
 def serving_metric_amount(entry: FoodEntry, serving: Serving) -> MetricAmount | None:

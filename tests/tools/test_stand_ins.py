@@ -208,6 +208,51 @@ async def test_the_first_of_equally_close_foods_is_chosen_every_time(
     assert second["draft_id"] == first["draft_id"]
 
 
+async def test_a_stand_in_is_logged_in_grams_when_its_food_has_a_serving_in_grams(
+    connect: Connect, fatsecret: FakeFatSecret
+) -> None:
+    bar = serving(
+        "chocolate-grams-1",
+        "1 bar (60 g)",
+        60,
+        Nutrition(
+            kcal=240,
+            protein=20,
+            fat=8,
+            carbohydrate=24,
+        ),
+    )
+    hundred_grams = serving(
+        "chocolate-grams-100g",
+        "100 g",
+        100,
+        Nutrition(
+            kcal=400,
+            protein=33.3,
+            fat=13.3,
+            carbohydrate=42,
+        ),
+        number_of_units=100,
+    )
+    # The bar's Macros are closer to the label, so the bar is chosen and then logged in grams.
+    chocolate = catalog_food("chocolate-grams", "Chocolate Protein Bar", [bar, hundred_grams])
+
+    fatsecret.add_food(chocolate)
+    fatsecret.set_search_results("chocolate protein bar", [search_result(chocolate)])
+
+    async with connect("jakub") as client:
+        proposed = await draft(client, [dzik_bar(search_phrase="chocolate protein bar")])
+
+    [item] = proposed["items"]
+
+    assert (item["serving_id"], item["number_of_units"], item["amount"]) == (
+        "chocolate-grams-100g",
+        47.5,
+        "47.5 g",
+    )
+    assert item["kcal"] == item["stand_in"]["nutrition_label"]["kcal"] == 190
+
+
 async def test_a_label_whose_kcal_are_lowered_by_polyols_is_accepted(
     connect: Connect, protein_bars: list[Food]
 ) -> None:

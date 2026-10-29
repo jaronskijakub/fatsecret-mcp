@@ -22,7 +22,12 @@ from fatsecret_mcp.domain.drafts import (
     draft_item,
     draft_totals,
 )
-from fatsecret_mcp.domain.entry_amounts import serving_metric_amount, written_metric_amount
+from fatsecret_mcp.domain.entry_amounts import (
+    amount_text,
+    has_bare_number_amount,
+    serving_metric_amount,
+    written_metric_amount,
+)
 from fatsecret_mcp.domain.entry_changes import (
     REMOVAL_NOTE,
     changed_days,
@@ -101,7 +106,9 @@ def register(
         count, not necessarily grams: scale it from the Serving's number_of_units. Name it with
         food_entry_name the way the User said it, in their language, followed by a short note in
         the same language that it was matched in the US catalog, e.g. "Kajzerka (katalog USA)" or
-        "Kaiser roll (US catalog)". The Draft shows the catalog's name beside it.
+        "Kaiser roll (US catalog)". The Draft shows the catalog's name beside it. A Serving of known
+        weight, such as "1 roll (57 g)", is logged as that weight in the Food's Serving in grams or
+        ml when it has one, so the Draft may show that Serving instead.
 
         A Nutrition Label item logs a branded product missing from the catalog as a Stand-in: the
         closest catalog Food for search_phrase, in the amount whose kcal match the label, under the
@@ -309,14 +316,14 @@ async def _prepared_item(
 
 async def _food_item(item: FoodDraftInput, fatsecret: FatSecretGateway, food_cache: FoodCache) -> DraftItem:
     """A catalog Food under the User's name for it, or under the catalog's name when none was given."""
-    catalog_name, serving = await _resolve_serving(item, fatsecret, food_cache)
-    name = item.food_entry_name or catalog_name
-    drafted = draft_item(item.food_id, name, serving, item.number_of_units, item.assumption)
+    catalog_food, serving = await _resolve_serving(item, fatsecret, food_cache)
+    name = item.food_entry_name or catalog_food.name
+    drafted = draft_item(catalog_food, name, serving, item.number_of_units, item.assumption)
 
-    if name == catalog_name:
+    if name == catalog_food.name:
         return drafted
 
-    return replace(drafted, catalog_name=catalog_name)
+    return replace(drafted, catalog_name=catalog_food.name)
 
 
 async def _repeated(
@@ -343,15 +350,19 @@ async def _prepared_change(
     diary_days: DiaryDays,
 ) -> DraftChange:
     entry = entry_on_day(diary_days[item.diary_day], item.food_entry_id, item.diary_day)
+    bare_number = has_bare_number_amount(entry)
+
+    # Only a new amount, or an amount shown as a bare number, needs the entry's weight.
+    entry_amount = None
+
+    if item.metric_amount is not None or bare_number:
+        entry_amount = await _metric_amount(entry, fatsecret, food_cache)
+
+    if bare_number:
+        entry = replace(entry, amount=amount_text(entry, entry_amount))
 
     if item.change == "remove":
         return proposed_removal(entry)
-
-    # Only a new amount needs the entry's weight.
-    entry_amount = None
-
-    if item.metric_amount is not None:
-        entry_amount = await _metric_amount(entry, fatsecret, food_cache)
 
     return proposed_edit(
         entry,
@@ -413,7 +424,7 @@ async def _stand_in(
 
 async def _resolve_serving(
     item: FoodDraftInput, fatsecret: FatSecretGateway, food_cache: FoodCache
-) -> tuple[str, Serving]:
+) -> tuple[Food, Serving]:
     if item.serving_id == "0":
         raise ToolError("Serving 0 is derived and cannot be logged. Choose a Serving from search_foods.")
 
@@ -427,7 +438,7 @@ async def _resolve_serving(
     if serving is None:
         raise ToolError("Serving does not belong to this Food.")
 
-    return catalog_food.name, serving
+    return catalog_food, serving
 
 
 def _serving_of(food: Food, serving_id: str) -> Serving | None:

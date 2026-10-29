@@ -63,6 +63,71 @@ def rice(fatsecret: FakeFatSecret) -> Food:
     return food
 
 
+def kaiser_roll() -> Food:
+    """A US catalog Food counted in rolls of a known weight, which also has a Serving in grams."""
+    roll = Serving(
+        id="roll-1",
+        description='1 roll (3-1/2" dia)',
+        metric_amount=57,
+        metric_unit="g",
+        number_of_units=1,
+        nutrition=Nutrition(
+            kcal=167,
+            protein=5.6,
+            fat=2.5,
+            carbohydrate=30,
+        ),
+    )
+    hundred_grams = Serving(
+        id="roll-100g",
+        description="100 g",
+        metric_amount=100,
+        metric_unit="g",
+        number_of_units=100,
+        nutrition=Nutrition(
+            kcal=293,
+            protein=9.9,
+            fat=4.3,
+            carbohydrate=52.7,
+        ),
+    )
+
+    return Food(
+        id="kaiser-roll",
+        name="Hard Rolls (Includes Kaiser)",
+        brand=None,
+        servings=[roll, hundred_grams],
+    )
+
+
+@pytest.fixture
+def nutella(fatsecret: FakeFatSecret) -> Food:
+    """A branded US catalog Food with a weight but no Serving in grams, as brands usually have."""
+    serving = Serving(
+        id="nutella-2-tbsp",
+        description="2 tbsp",
+        metric_amount=37,
+        metric_unit="g",
+        number_of_units=1,
+        nutrition=Nutrition(
+            kcal=200,
+            protein=2,
+            fat=11,
+            carbohydrate=22,
+        ),
+    )
+    food = Food(
+        id="nutella",
+        name="Hazelnut Spread",
+        brand="Nutella",
+        servings=[serving],
+    )
+
+    fatsecret.add_food(food)
+
+    return food
+
+
 async def draft(
     client: Client,
     items: list[dict[str, Any]],
@@ -170,6 +235,134 @@ async def test_a_food_item_named_in_the_users_words_is_drafted_and_saved_under_t
     assert not confirmed.is_error, confirmed.content
     assert names == [("Ryż", "Cooked Rice"), ("Cooked Rice", None)]
     assert written == ["Ryż", "Cooked Rice"]
+
+
+async def test_two_rolls_of_a_known_weight_are_drafted_and_saved_as_grams_of_the_food(
+    connect: Connect, fatsecret: FakeFatSecret, household: Household
+) -> None:
+    fatsecret.add_food(kaiser_roll())
+    two_rolls = {
+        "food_id": "kaiser-roll",
+        "serving_id": "roll-1",
+        "number_of_units": 2,
+        "food_entry_name": "Kajzerka (katalog USA)",
+    }
+
+    async with connect("jakub") as client:
+        proposed = await draft(client, [two_rolls])
+        confirmed = await client.call_tool("confirm_draft", {"draft_id": proposed["draft_id"]})
+
+    [item] = proposed["items"]
+    [written] = await fatsecret.list_food_entries(household.user("jakub").fatsecret, TODAY)
+
+    assert not confirmed.is_error, confirmed.content
+    assert (item["serving_id"], item["serving"], item["number_of_units"]) == ("roll-100g", "100 g", 114)
+    assert (item["amount"], item["kcal"], item["protein"]) == ("114 g", 334, 11.3)
+    assert (written.serving_id, written.number_of_units, round(written.nutrition.kcal)) == (
+        "roll-100g",
+        114,
+        334,
+    )
+
+
+async def test_a_cup_in_ml_is_logged_in_the_foods_largest_serving_in_ml(
+    connect: Connect, fatsecret: FakeFatSecret
+) -> None:
+    cup = Serving(
+        id="milk-cup",
+        description="1 cup",
+        metric_amount=244,
+        metric_unit="ml",
+        number_of_units=1,
+        nutrition=Nutrition(
+            kcal=149,
+        ),
+    )
+    one_ml = Serving(
+        id="milk-1ml",
+        description="1 ml",
+        metric_amount=1,
+        metric_unit="ml",
+        number_of_units=1,
+        nutrition=Nutrition(
+            kcal=1,
+        ),
+    )
+    hundred_ml = Serving(
+        id="milk-100ml",
+        description="100 ml",
+        metric_amount=100,
+        metric_unit="ml",
+        number_of_units=100,
+        nutrition=Nutrition(
+            kcal=61,
+        ),
+    )
+    milk = Food(
+        id="milk",
+        name="Milk",
+        brand=None,
+        servings=[cup, one_ml, hundred_ml],
+    )
+    item = {"food_id": milk.id, "serving_id": "milk-cup", "number_of_units": 1}
+
+    fatsecret.add_food(milk)
+
+    async with connect("jakub") as client:
+        proposed = await draft(client, [item])
+
+    [drafted] = proposed["items"]
+
+    assert (drafted["serving_id"], drafted["number_of_units"], drafted["amount"]) == (
+        "milk-100ml",
+        244,
+        "244 ml",
+    )
+    assert drafted["kcal"] == 149
+
+
+async def test_a_serving_stays_as_chosen_when_the_food_has_no_serving_in_its_unit(
+    connect: Connect, fatsecret: FakeFatSecret, nutella: Food
+) -> None:
+    cup = Serving(
+        id="milk-cup",
+        description="1 cup",
+        metric_amount=244,
+        metric_unit="ml",
+        number_of_units=1,
+        nutrition=Nutrition(
+            kcal=149,
+        ),
+    )
+    hundred_grams = Serving(
+        id="milk-100g",
+        description="100 g",
+        metric_amount=100,
+        metric_unit="g",
+        number_of_units=100,
+        nutrition=Nutrition(
+            kcal=61,
+        ),
+    )
+    milk = Food(
+        id="milk",
+        name="Milk",
+        brand=None,
+        servings=[cup, hundred_grams],
+    )
+    items = [
+        {"food_id": nutella.id, "serving_id": "nutella-2-tbsp", "number_of_units": 1},
+        {"food_id": milk.id, "serving_id": "milk-cup", "number_of_units": 1},
+    ]
+
+    fatsecret.add_food(milk)
+
+    async with connect("jakub") as client:
+        proposed = await draft(client, items)
+
+    logged = [(item["serving_id"], item["number_of_units"], item["amount"]) for item in proposed["items"]]
+
+    assert logged == [("nutella-2-tbsp", 1, "37 g"), ("milk-cup", 1, "244 ml")]
 
 
 @pytest.mark.parametrize(

@@ -42,9 +42,11 @@ Proposes entries without writing anything.
 > **You:** *(photo of a plate)* Log this as lunch.
 >
 > **Claude:** Here's the draft for lunch today:
-> - Beef bibimbap, 1 bowl (480 g): 640 kcal, 32 g protein, 21 g fat, 80 g carbohydrate
+> - Beef bibimbap, 480 g (1 bowl): 640 kcal, 32 g protein, 21 g fat, 80 g carbohydrate
 >
 > I assumed one restaurant-sized bowl. After adding it you'll be at 1,420 of 2,200 kcal and 78 of 140 g protein. Save it?
+
+A portion of known weight, such as a bowl or a roll, is saved in grams when the food can be measured in grams, so the FatSecret app shows the same amount as the draft.
 
 ### `confirm_draft`
 
@@ -135,15 +137,17 @@ Claude reads the earlier day and drafts the entries you keep, without searching 
 
 > **You:** *(right after saving)* Undo that.
 >
-> **Claude:** Here's the draft: remove beef bibimbap, 1 bowl (480 g), 640 kcal, from today's lunch. You'd be back at 780 of 2,200 kcal. A removed entry can't be restored, only logged again. Remove it?
+> **Claude:** Here's the draft: remove beef bibimbap, 480 g, 640 kcal, from today's lunch. You'd be back at 780 of 2,200 kcal. A removed entry can't be restored, only logged again. Remove it?
 >
 > **You:** Actually, keep it, it was just 300 g.
 >
-> **Claude:** Here's the new draft: beef bibimbap, 1 bowl (480 g) → 300 g, 640 → 400 kcal, still under lunch. Save the change?
+> **Claude:** Here's the new draft: beef bibimbap, 480 g → 300 g, 640 → 400 kcal, still under lunch. Save the change?
 
 A draft can also change entries already in your diary, including ones you logged in the FatSecret app: a new amount in grams or ml, another meal on the same day, or a new name. It can remove them too. Each change shows the entry before and after, and how each day looks afterwards. Nothing changes until you say yes. For "undo that", Claude removes the entries the last save wrote. For anything else, it reads the day first and asks when it's unclear which entry you mean.
 
 FatSecret can't move an entry to another food or another day. So "it was chicken thigh, not breast" or "that was yesterday" becomes one draft that adds the right entry and removes the wrong one. The new entry is saved first, so if something fails halfway you see a duplicate rather than a gap. Changes reach back up to a year.
+
+The FatSecret app in another language may open a US catalog entry without the serving it was saved in: an entry of "1 roll" can open as "1 gram". Saving it there may change the entry. Change such entries through Claude, or check the amount before saving in the app.
 
 ## What it doesn't do
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 import math
 from dataclasses import replace
 
-from fatsecret_mcp.domain.drafts import InvalidDraftItem, draft_item
+from fatsecret_mcp.domain.drafts import UNIT_DECIMALS, InvalidDraftItem, draft_item, metric_serving
 from fatsecret_mcp.domain.models import DraftItem, Food, NutritionLabel, Serving, StandIn
 
 KCAL_PER_GRAM_PROTEIN = 4
@@ -18,7 +18,6 @@ KCAL_PER_GRAM_CARBOHYDRATE = 4
 # Fibre, polyols and rounding make a label's kcal differ from 4/9/4 kcal per gram of Macros.
 KCAL_TOLERANCE = 25
 KCAL_TOLERANCE_SHARE = 0.2
-UNIT_DECIMALS = 3
 
 
 def check_label(label: NutritionLabel) -> None:
@@ -57,7 +56,9 @@ def stand_in_item(
             "Draft again with a different, more generic English search_phrase."
         )
 
-    food, serving = _closest(candidates, label)
+    food, closest = _closest(candidates, label)
+    # Matched in the Serving it's logged in, so the logged kcal equal the label's.
+    serving = metric_serving(food, closest)
     eaten = label.per_100_g.scaled(grams / 100)
     kcal_per_unit = serving.nutrition.kcal / serving.number_of_units
     units = round(eaten.kcal / kcal_per_unit, UNIT_DECIMALS)
@@ -65,7 +66,7 @@ def stand_in_item(
     if units <= 0:
         raise InvalidDraftItem("Amount is too small to log.")
 
-    item = draft_item(food.id, product_name, serving, units, assumption)
+    item = draft_item(food, product_name, serving, units, assumption)
     stand_in = StandIn(
         food_name=food.name,
         grams_eaten=grams,

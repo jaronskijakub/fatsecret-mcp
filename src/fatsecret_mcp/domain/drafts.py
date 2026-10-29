@@ -7,8 +7,18 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 
 from fatsecret_mcp.domain.day_summary import total_nutrition
-from fatsecret_mcp.domain.models import DraftEntry, DraftItem, DraftTotals, FoodEntry, Nutrition, Serving
+from fatsecret_mcp.domain.models import (
+    DraftEntry,
+    DraftItem,
+    DraftTotals,
+    Food,
+    FoodEntry,
+    Nutrition,
+    Serving,
+)
 
+METRIC_UNITS = ("g", "ml")
+UNIT_DECIMALS = 3
 MAX_METRIC_AMOUNT = 10000
 MAX_KCAL = 20000
 DRAFT_LIFETIME = timedelta(minutes=30)
@@ -55,10 +65,16 @@ def draft_expiry(now: datetime) -> datetime:
 
 
 def draft_item(
-    food_id: str, name: str, serving: Serving, number_of_units: float, assumption: str | None
+    food: Food, name: str, serving: Serving, number_of_units: float, assumption: str | None
 ) -> DraftItem:
+    """The item logging `number_of_units` of `serving`, in the Food's grams or ml when its weight is known."""
     if not math.isfinite(serving.number_of_units) or serving.number_of_units <= 0:
         raise InvalidDraftItem("Serving has no valid positive unit count. Choose another Serving.")
+
+    serving, number_of_units = _in_metric_serving(food, serving, number_of_units)
+
+    if number_of_units <= 0:
+        raise InvalidDraftItem("Amount is too small to log.")
 
     ratio = number_of_units / serving.number_of_units
     nutrition = serving.nutrition.scaled(ratio)
@@ -68,7 +84,7 @@ def draft_item(
 
     amount = _amount(serving, ratio)
     entry = DraftEntry(
-        food_id=food_id,
+        food_id=food.id,
         serving_id=serving.id,
         number_of_units=number_of_units,
         entry_name=name,
@@ -83,6 +99,31 @@ def draft_item(
     )
 
 
+def metric_serving(food: Food, serving: Serving) -> Serving:
+    """The Food's Serving of 1 g or ml per unit for a Serving of known weight; else `serving` itself.
+
+    The FatSecret app can't always show a count Serving such as "1 roll": in another language the
+    Food may lack it. Grams or ml always show, so a weighed portion is logged in them.
+    """
+    if serving.metric_amount is None or serving.metric_unit not in METRIC_UNITS:
+        return serving
+
+    if _one_unit_per_gram_or_ml(serving):
+        return serving
+
+    candidates: list[Serving] = []
+
+    for candidate in food.servings:
+        if candidate.metric_unit == serving.metric_unit and _one_unit_per_gram_or_ml(candidate):
+            candidates.append(candidate)
+
+    if not candidates:
+        return serving
+
+    # FatSecret rounds a Serving's kcal, so "100 g" is more exact than "1 g".
+    return max(candidates, key=_units)
+
+
 def check_plausible(nutrition: Nutrition, metric_amount: float | None) -> None:
     """Reject an item over 20000 kcal, or over 10000 g or ml when its weight is known."""
     if not math.isfinite(nutrition.kcal) or nutrition.kcal > MAX_KCAL:
@@ -90,6 +131,33 @@ def check_plausible(nutrition: Nutrition, metric_amount: float | None) -> None:
 
     if metric_amount is not None and (not math.isfinite(metric_amount) or metric_amount > MAX_METRIC_AMOUNT):
         raise InvalidDraftItem("Amount is implausibly large: at most 10000 g or ml per item.")
+
+
+def _one_unit_per_gram_or_ml(serving: Serving) -> bool:
+    """True for a Serving such as "100 g", whose units are grams or ml."""
+    if serving.metric_amount is None or serving.metric_amount <= 0:
+        return False
+
+    # A Food's own gram Serving is described by its amount alone; "1 slice (1 g)" is not one.
+    in_units = f"{serving.number_of_units:g} {serving.metric_unit}"
+
+    return serving.number_of_units == serving.metric_amount and serving.description == in_units
+
+
+def _units(serving: Serving) -> float:
+    return serving.number_of_units
+
+
+def _in_metric_serving(food: Food, serving: Serving, number_of_units: float) -> tuple[Serving, float]:
+    """The Serving to log and its units: the same weight in the Food's grams or ml when known."""
+    logged = metric_serving(food, serving)
+
+    if logged is serving or serving.metric_amount is None:
+        return serving, number_of_units
+
+    metric_amount = serving.metric_amount * number_of_units / serving.number_of_units
+
+    return logged, round(metric_amount, UNIT_DECIMALS)
 
 
 def _amount(serving: Serving, ratio: float) -> str:

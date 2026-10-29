@@ -14,6 +14,7 @@ All notable changes to this project are listed here. The format follows [Keep a 
 
 - The sign-in page names the app being connected and the host it returns to.
 - Catalog foods are saved under the name you used, in your language, with a short note that they were matched in the US catalog, such as "Kajzerka (katalog USA)" instead of "Hard Rolls (Includes Kaiser)". The draft shows the catalog's name beside it.
+- A portion of known weight, such as "1 roll (57 g)", is saved in grams when the food has a serving in grams or ml, for catalog foods and stand-ins alike. The FatSecret app then shows the same amount as the draft, even where its own language lacks that portion. A changed or removed entry whose amount shows as a bare number, such as "1", appears in grams in the draft.
 
 After upgrading, reconnect the connector in Claude, so that Claude sees the new tool options.
 

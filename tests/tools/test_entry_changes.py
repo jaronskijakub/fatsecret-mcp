@@ -14,7 +14,7 @@ from fatsecret_mcp.config.models import Household
 from fatsecret_mcp.domain.models import Food, FoodEntry, Meal, Nutrition, Serving
 from fatsecret_mcp.server import INSTRUCTIONS
 from tests.fatsecret.fake import FakeFatSecret, food_entry
-from tests.tools.test_draft_entries import decode_base64url, draft
+from tests.tools.test_draft_entries import decode_base64url, draft, kaiser_roll
 
 pytestmark = pytest.mark.anyio
 Connect = Callable[[str], Client]
@@ -372,6 +372,67 @@ async def test_a_meal_move_keeps_the_amount_and_nutrition(
     assert proposed_change["after"] == moved_before
     assert sealed_changes(proposed)[0]["number_of_units"] is None
     assert [(entry["meal"], entry["amount"], entry["kcal"]) for entry in moved] == [("dinner", "150 g", 248)]
+
+
+@pytest.fixture
+def roll(fatsecret: FakeFatSecret, household: Household) -> FoodEntry:
+    """Yesterday's kaiser roll, described as "1 Hard Rolls (Includes Kaiser)", so its amount is "1"."""
+    entry = food_entry(
+        "Kajzerka (katalog USA)",
+        Meal.LUNCH,
+        YESTERDAY,
+        kcal=167,
+        amount="1",
+        food_id="kaiser-roll",
+        serving_id="roll-1",
+        number_of_units=1,
+    )
+
+    fatsecret.add_food(kaiser_roll())
+
+    return add_to_diary(fatsecret, household, entry)
+
+
+@pytest.mark.parametrize(
+    ("meal", "metric_amount", "amount_after", "units_after"),
+    [
+        ("dinner", None, "57 g", None),
+        (None, 100, "100 g", 1.754),
+    ],
+)
+async def test_a_bare_number_amount_of_a_known_weight_is_shown_in_grams_in_a_change(
+    connect: Connect,
+    roll: FoodEntry,
+    meal: str | None,
+    metric_amount: float | None,
+    amount_after: str,
+    units_after: float | None,
+) -> None:
+    item = change(roll, meal=meal, metric_amount=metric_amount)
+
+    async with connect("jakub") as client:
+        proposed = await draft(client, [item])
+
+    [proposed_change] = proposed["changes"]
+
+    assert (proposed_change["before"]["amount"], proposed_change["after"]["amount"]) == ("57 g", amount_after)
+    assert sealed_changes(proposed)[0]["number_of_units"] == units_after
+
+
+async def test_a_removal_shows_a_bare_number_amount_in_grams_with_one_cached_lookup(
+    connect: Connect, fatsecret: FakeFatSecret, roll: FoodEntry
+) -> None:
+    async with connect("jakub") as client:
+        before = fatsecret.requests
+        first = await draft(client, [remove(roll)])
+        after_first = fatsecret.requests
+        await draft(client, [remove(roll)])
+        after_second = fatsecret.requests
+
+    # Yesterday and the roll's Servings, then neither: both are cached.
+    assert after_first - before == 2
+    assert after_second - after_first == 0
+    assert first["changes"][0]["before"]["amount"] == "57 g"
 
 
 async def test_a_rename_shows_the_old_and_new_name_and_sends_only_the_name(
