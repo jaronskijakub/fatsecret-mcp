@@ -6,6 +6,7 @@
 [![PyPI](https://img.shields.io/pypi/v/fatsecret-mcp)](https://pypi.org/project/fatsecret-mcp/)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue)](https://github.com/jaronskijakub/fatsecret-mcp/blob/main/pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](https://github.com/jaronskijakub/fatsecret-mcp/blob/main/LICENSE)
+[![Glama score](https://glama.ai/mcp/servers/jaronskijakub/fatsecret-mcp/badges/score.svg)](https://glama.ai/mcp/servers/jaronskijakub/fatsecret-mcp)
 [![Works with Claude](https://img.shields.io/badge/works%20with-Claude-D97757?logo=claude&logoColor=white)](https://github.com/jaronskijakub/fatsecret-mcp/blob/main/docs/connector.md)
 [![Works with ChatGPT](https://img.shields.io/badge/works%20with-ChatGPT-10A37F)](https://github.com/jaronskijakub/fatsecret-mcp#use-it-with-chatgpt)
 
